@@ -1,0 +1,56 @@
+{
+  "name": "@kintana/sdk",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Kintana public API client and React helpers for ticketing sites",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kintanaapp/kintana-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kintanaapp/kintana-sdk/issues"
+  },
+  "homepage": "https://github.com/kintanaapp/kintana-sdk#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.mjs",
+      "require": "./dist/react.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  }
+}
