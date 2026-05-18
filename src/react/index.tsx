@@ -207,9 +207,8 @@ export function EventDetail({
         />
       ) : null}
       <div
-        data-kintana-widget=""
-        data-event-id={event.id}
-        style={{ marginTop: 24, minHeight: 80, borderRadius: 8 }}
+        data-kintana-widget={`event:${event.id}`}
+        style={{ marginTop: 24, minHeight: 320, borderRadius: 8 }}
       />
     </article>
   );

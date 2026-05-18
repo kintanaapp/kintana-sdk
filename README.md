@@ -1,4 +1,4 @@
-## @kintana/sdk · v0.4.0
+## @kintana/sdk · v0.4.1
 
 TypeScript helpers for embedding Kintana’s read-only endpoints from your own storefront (Next.js, Astro, Remix, etc.). Checkout still happens inside your Kintana deployment.
 
@@ -165,7 +165,15 @@ Build `/locations` navigation without a bespoke API: group on `(city, country)` 
 
 ### Tracker & custom DOM events
 
-The async loader at `{baseUrl}/_t/k.js` still records first-party hits, but it now dispatches browser events you can bridge into GA4:
+**Do you need `_t/k.js`?**
+
+| Setup | Tracker needed? |
+| --- | --- |
+| Only `createKintanaClient` on the server (lists, detail pages, API-backed forms you render yourself) | **No** — unless you want visit analytics / attribution below |
+| Plain HTML markers `[data-kintana-form]` or `[data-kintana-widget="event:…"]`, ticket-click helpers, or the CustomEvents in this section | **Yes** — load the script once per layout (typically `<head>`). Copy it from **Business → Websites → Custom site** (“Tracking & embedded widgets”). If the snippet shows `YOUR_SITE_CREDENTIAL`, replace it with the secret shown once when you created that credential (same idea as `kpa_live_…` for API calls). |
+| React `KintanaProvider` | Set **`enableTracker`** or render **`KintanaTracker`** — they inject `_t/k.js` using your publish credential |
+
+The async loader at `{baseUrl}/_t/k.js` records first-party hits and dispatches browser events you can bridge into GA4:
 
 | Event | When |
 | --- | --- |
@@ -243,7 +251,7 @@ Props:
 
 #### `EventDetail`
 
-Hydrates headings, geography, ticketing links, renders `<div data-kintana-widget data-event-id="…"/>`, and eagerly loads `_t/k.js`.
+Hydrates headings, geography, ticketing links, renders `<div data-kintana-widget="event:EVENT_ID"/>`, and eagerly loads `_t/k.js`.
 
 #### `EmbedForm`
 

@@ -36,6 +36,8 @@ Starter repos (copy/paste onboarding):
 - `https://github.com/kintanaapp/kintana-next-starter`
 - `https://github.com/kintanaapp/kintana-astro-starter`
 
-Companion script for visitor analytics + hydrating `[data-kintana-widget]` / `[data-kintana-form]`:
+Companion script (`/_t/k.js`) for visitor analytics + hydrating `[data-kintana-form]` / `[data-kintana-widget="event:EVENT_ID"]`.
 
-- Loads from `{baseUrl}/_t/k.js` with `<script async data-token="kpa_live_…" data-api-base="https://…">`
+- Not required if integrators **only** use `createKintanaClient` server-side for REST — required if they use those DOM markers or want ingest CustomEvents / ticket-click hooks.
+- Paste once per layout; snippet lives under **Business → Websites → Custom site** (tracking section). Token is usually the same publish credential as API calls (`kpa_live_…`), unless the host mints an automatic snippet token.
+- HTML shape: `<script async src="{baseUrl}/_t/k.js" data-token="…" data-api-base="{baseUrl}">`
