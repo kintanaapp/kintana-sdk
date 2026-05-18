@@ -1,17 +1,31 @@
 import { KintanaApiError } from "./error";
 import type {
   KintanaFormField,
+  KintanaPublicArtistDetail,
+  KintanaPublicArtistEmbed,
   KintanaPublicEvent,
+  KintanaPublicEventListingStatus,
   KintanaPublicFormSchema,
   KintanaPublicFormSummary,
+  KintanaPublicVenueDetail,
+  KintanaPublicVenueListed,
 } from "./types";
+import type { KintanaGroupedCity } from "./locations";
+import { groupVenuesByCity as groupVenuesByCityImpl } from "./locations";
 
 export type {
   KintanaFormField,
   KintanaPublicEvent,
+  KintanaPublicEventListingStatus,
   KintanaPublicFormSchema,
   KintanaPublicFormSummary,
+  KintanaPublicVenueListed,
+  KintanaPublicVenueDetail,
+  KintanaPublicArtistEmbed,
+  KintanaPublicArtistDetail,
 } from "./types";
+export { groupVenuesByCityImpl as groupVenuesByCity };
+export type { KintanaGroupedCity } from "./locations";
 export { KintanaApiError };
 
 export type KintanaClientOptions = {
@@ -28,11 +42,25 @@ export type SubmitFormResponse = {
   redirectUrl?: string | null;
 };
 
+export type ListPublicEventsOpts = {
+  limit?: number;
+  tourId?: string;
+  artistSlug?: string;
+  from?: string;
+  to?: string;
+  status?: KintanaPublicEventListingStatus;
+};
+
 export type KintanaClient = {
-  listEvents(opts?: { limit?: number }): Promise<KintanaPublicEvent[]>;
+  listEvents(opts?: ListPublicEventsOpts): Promise<KintanaPublicEvent[]>;
   getEvent(idOrSlug: string): Promise<KintanaPublicEvent>;
+  listArtists(opts?: { limit?: number }): Promise<KintanaPublicArtistEmbed[]>;
+  getArtist(idOrSlug: string): Promise<KintanaPublicArtistDetail>;
+  listVenues(): Promise<KintanaPublicVenueListed[]>;
+  getVenue(idOrSlug: string): Promise<KintanaPublicVenueDetail>;
+  groupVenuesByCity(venues: readonly KintanaPublicVenueListed[]): KintanaGroupedCity[];
   listForms(): Promise<KintanaPublicFormSummary[]>;
-  getFormSchema(formId: string): Promise<KintanaPublicFormSchema>;
+  getFormSchema(formId: string, opts?: { cache?: RequestCache }): Promise<KintanaPublicFormSchema>;
   submitForm(
     formId: string,
     values: Record<string, string>,
@@ -46,17 +74,18 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
 
   async function requestJson<T>(
     pathWithQuery: string,
-    init: RequestInit & { method?: string } = {}
+    init: RequestInit & { method?: string; cache?: RequestCache } = {}
   ): Promise<T> {
     const method = init.method ?? "GET";
     const headers = new Headers(init.headers ?? {});
     headers.set("Authorization", `Bearer ${opts.apiKey.trim()}`);
     headers.set("Accept", "application/json");
+    const { cache = "no-store", ...rest } = init;
     const res = await fetchImpl(`${base}${pathWithQuery}`, {
-      ...init,
+      ...rest,
       method,
       headers,
-      cache: "no-store",
+      cache,
     });
     const text = await res.text();
     const snippet = text.slice(0, 400);
@@ -70,12 +99,23 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
     }
   }
 
+  function buildEventsQuery(opts?: ListPublicEventsOpts): string {
+    const q = new URLSearchParams();
+    const limit = Math.min(100, Math.max(1, opts?.limit ?? 24));
+    q.set("limit", String(limit));
+    if (opts?.tourId?.trim()) q.set("tourId", opts.tourId.trim());
+    if (opts?.artistSlug?.trim()) q.set("artistSlug", opts.artistSlug.trim());
+    if (opts?.from?.trim()) q.set("from", opts.from.trim());
+    if (opts?.to?.trim()) q.set("to", opts.to.trim());
+    if (opts?.status?.trim()) q.set("status", opts.status.trim());
+    return q.toString();
+  }
+
   return {
-    async listEvents(listOpts?: { limit?: number }): Promise<KintanaPublicEvent[]> {
-      const limit = Math.min(100, Math.max(1, listOpts?.limit ?? 24));
-      const qs = new URLSearchParams({ limit: String(limit) });
+    async listEvents(listOpts?: ListPublicEventsOpts): Promise<KintanaPublicEvent[]> {
+      const qs = buildEventsQuery(listOpts);
       const data = await requestJson<{ events?: KintanaPublicEvent[] }>(
-        `/api/public/v1/events?${qs.toString()}`
+        `/api/public/v1/events?${qs}`
       );
       return data.events ?? [];
     },
@@ -91,16 +131,55 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
       return data.event;
     },
 
-    async listForms(): Promise<KintanaPublicFormSummary[]> {
-      const data = await requestJson<{ forms?: KintanaPublicFormSummary[] }>(
-        `/api/public/v1/forms`
+    async listArtists(listOpts?: { limit?: number }): Promise<KintanaPublicArtistEmbed[]> {
+      const limit = Math.min(100, Math.max(1, listOpts?.limit ?? 50));
+      const data = await requestJson<{ artists?: KintanaPublicArtistEmbed[] }>(
+        `/api/public/v1/artists?limit=${limit}`
       );
+      return data.artists ?? [];
+    },
+
+    async getArtist(idOrSlug: string): Promise<KintanaPublicArtistDetail> {
+      const id = encodeURIComponent(idOrSlug);
+      const data = await requestJson<{ artist?: KintanaPublicArtistDetail }>(
+        `/api/public/v1/artists/${id}`
+      );
+      if (!data.artist) {
+        throw new KintanaApiError("Malformed response from Kintana API (missing artist)", 500, "");
+      }
+      return data.artist;
+    },
+
+    async listVenues(): Promise<KintanaPublicVenueListed[]> {
+      const data = await requestJson<{ venues?: KintanaPublicVenueListed[] }>(`/api/public/v1/venues`);
+      return data.venues ?? [];
+    },
+
+    async getVenue(idOrSlug: string): Promise<KintanaPublicVenueDetail> {
+      const id = encodeURIComponent(idOrSlug);
+      const data = await requestJson<{ venue?: KintanaPublicVenueDetail }>(
+        `/api/public/v1/venues/${id}`
+      );
+      if (!data.venue) {
+        throw new KintanaApiError("Malformed response from Kintana API (missing venue)", 500, "");
+      }
+      return data.venue;
+    },
+
+    groupVenuesByCity(venues: readonly KintanaPublicVenueListed[]) {
+      return groupVenuesByCityImpl(venues);
+    },
+
+    async listForms(): Promise<KintanaPublicFormSummary[]> {
+      const data = await requestJson<{ forms?: KintanaPublicFormSummary[] }>(`/api/public/v1/forms`);
       return data.forms ?? [];
     },
 
-    async getFormSchema(formId: string): Promise<KintanaPublicFormSchema> {
+    async getFormSchema(formId: string, schemaOpts?: { cache?: RequestCache }): Promise<KintanaPublicFormSchema> {
       const id = encodeURIComponent(formId);
-      return requestJson<KintanaPublicFormSchema>(`/api/public/v1/forms/${id}/schema`);
+      return requestJson<KintanaPublicFormSchema>(`/api/public/v1/forms/${id}/schema`, {
+        cache: schemaOpts?.cache ?? "default",
+      });
     },
 
     async submitForm(

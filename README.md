@@ -1,4 +1,4 @@
-## @kintana/sdk · v0.2.0
+## @kintana/sdk · v0.4.0
 
 TypeScript helpers for embedding Kintana’s read-only endpoints from your own storefront (Next.js, Astro, Remix, etc.). Checkout still happens inside your Kintana deployment.
 
@@ -59,12 +59,22 @@ export function HelloShows() {
 
 Returns a `KintanaClient`:
 
-#### `await client.listEvents({ limit })`
+#### `await client.listEvents(opts?)`
 
-Loads upcoming website-visible shows (max 100, default 24).
+Loads website-visible shows. Options:
+
+| Field | Meaning |
+| --- | --- |
+| `limit` | Max 100, default `24` |
+| `tourId` | Filter by tour id attached to shows |
+| `artistSlug` | Filter to lineup containing that comedian/party slug |
+| `from` | Inclusive UTC date (`YYYY-MM-DD`) |
+| `to` | Inclusive UTC date (`YYYY-MM-DD`) |
+| `status` | `on-sale`, `sold-out`, `past`, `cancelled`, `postponed`, etc. |
 
 ```ts
-await client.listEvents({ limit: 12 });
+await client.listEvents({ limit: 12, artistSlug: "taylor-swift-cover-band" });
+await client.listEvents({ status: "past", limit: 20 });
 ```
 
 #### `await client.getEvent(idOrSlug)`
@@ -75,7 +85,10 @@ Hydrate a dedicated page route with either internal id or public slug:
 const show = await client.getEvent(params.slugFromUrl);
 console.log(show.ticketUrl); // Links into Kintana checkout
 console.log(show.embedUrl); // Marketing embed route
+console.log(show.venue?.slug ?? show.venue?.id); // Stable venue deeplink for `/locations`
 ```
+
+Responses now include richer fields (`doorsOpen`, `showTime`, `lineup`, `headliner`, nested `venue`, resolved `language`, ticketing context, markdown-friendly copy, pricing hints).
 
 #### `await client.listForms()`
 
@@ -131,6 +144,48 @@ Common causes:
 | `429` | Back off retries; exponential sleep helps automated jobs |
 
 ---
+
+### Artists, venues, and coarse city grouping
+
+#### `await client.listArtists({ limit })`
+
+Returns comedians/parties tied to published shows in the workspace (`stageName`, `socials`, `reels`, `residency` labels are lowercase slugs).
+
+#### `await client.getArtist(idOrSlug)`
+
+Includes `{ upcomingEvents: KintanaPublicEvent[] }` hydrated with the richer event payload (`lineup`, `venue`, `status`, etc.).
+
+#### `await client.listVenues()` / `await client.getVenue(idOrSlug)`
+
+Every venue now ships a stable `slug` (plus `capacity`, coordinates, notes). `getVenue` mirrors `getArtist` by bundling `upcomingEvents`.
+
+#### `client.groupVenuesByCity(venues)` (also `import { groupVenuesByCity } from "@kintana/sdk/locations"`)
+
+Build `/locations` navigation without a bespoke API: group on `(city, country)` and sort venues alphabetically.
+
+### Tracker & custom DOM events
+
+The async loader at `{baseUrl}/_t/k.js` still records first-party hits, but it now dispatches browser events you can bridge into GA4:
+
+| Event | When |
+| --- | --- |
+| `kintana:pageview` | After every automatic pageview payload |
+| `kintana:event_view` | When a `[data-kintana-widget]` iframe boots |
+| `kintana:ticket_click` | Outbound links with `data-kintana-event` **or** same-origin `/event/...` checkout URLs |
+| `kintana:form_submit` | After embedded `[data-kintana-form]` POST succeeds |
+
+`window.addEventListener("kintana:pageview", (ev) => { console.log(ev.detail); })`.
+
+### Deferred product surface (tell clients explicitly)
+
+Generic marketing CMS pages (`/pages/{slug}`), partner/press tables, aggregated investor KPIs (`/stats`), RRULE recurrence, richer embed form field types remain **outside** `@kintana/sdk` until separate releases document them—continue using Astro/Next MDX for long-form storytelling for now.
+
+### Form schema caching
+
+`GET /api/public/v1/forms/{id}/schema` ships `Cache-Control: public, max-age=300, stale-while-revalidate=600` plus SHA-256 etags keyed to the normalized field list—`client.getFormSchema` defaults to browser caching (`fetch` cache `default`) so SSR pipelines can hydrate forms without disabling HTTP caches entirely.
+
+---
+
 
 ### React helpers (`@kintana/sdk/react`)
 

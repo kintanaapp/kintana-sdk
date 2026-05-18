@@ -1,6 +1,6 @@
 {
   "name": "@kintana/sdk",
-  "version": "0.2.3",
+  "version": "0.4.0",
   "private": false,
   "description": "Kintana public API client and React helpers for ticketing sites",
   "license": "MIT",
@@ -24,6 +24,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
+    },
+    "./locations": {
+      "types": "./dist/locations.d.ts",
+      "import": "./dist/locations.mjs",
+      "require": "./dist/locations.js"
     },
     "./react": {
       "types": "./dist/react.d.ts",

@@ -15,11 +15,21 @@ Imports:
 
 HTTP prefixes (HTTPS only in production):
 
-- `GET /api/public/v1/events?limit=N`
+- `GET /api/public/v1/events?limit=N&tourId=&artistSlug=&from=&to=&status=` (status ∈ `on-sale|sold-out|past|cancelled|postponed|…`)
 - `GET /api/public/v1/events/{idOrSlug}`
+- `GET /api/public/v1/artists` + `GET /api/public/v1/artists/{idOrSlug}` (embeds `socials`, `reels`, `upcomingEvents[]`)
+- `GET /api/public/v1/venues` + `GET /api/public/v1/venues/{idOrSlug}` (every venue has a `slug`, detail returns `upcomingEvents[]`)
 - `GET /api/public/v1/forms`
-- `GET /api/public/v1/forms/{id}/schema`
+- `GET /api/public/v1/forms/{id}/schema` (**5 min public cache + etag**; safe to SSR)
 - `POST /api/public/v1/forms/{id}/submit`
+
+Exports:
+
+- `@kintana/sdk/locations` ships `groupVenuesByCity()` for `/locations` nav without a bespoke API.
+
+Tracker script (`/_t/k.js`) emits `CustomEvent` hooks: `kintana:pageview`, `kintana:event_view`, `kintana:ticket_click`, `kintana:form_submit` (detail mirrors ingest props).
+
+Out of scope until explicitly launched: generic marketing `pages` CMS, `/stats` KPI aggregates, RRULE recurrence resources, richer embed-field types (`file`, selects, branching logic)—document that integrators keep MDX in their repo for prose.
 
 Starter repos (copy/paste onboarding):
 
