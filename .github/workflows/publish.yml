@@ -20,8 +20,19 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+          scope: "@kintana"
+      - name: Verify npm registry token is present
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::Add repo secret NPM_TOKEN (npm granular or classic automation token with publish rights for scope @kintana)."
+            exit 1
+          fi
+          npm whoami --registry=https://registry.npmjs.org/
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
-      - run: npm publish --provenance --access public
+      - name: Publish
+        run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
