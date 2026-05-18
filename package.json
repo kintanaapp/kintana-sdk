@@ -1,6 +1,6 @@
 {
   "name": "@kintana/sdk",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "private": false,
   "description": "Kintana public API client and React helpers for ticketing sites",
   "license": "MIT",
@@ -34,11 +34,12 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "llms.txt"
   ],
   "scripts": {
     "build": "tsup",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "pnpm run build"
   },
   "peerDependencies": {
     "react": ">=18"
@@ -50,6 +51,7 @@
   },
   "devDependencies": {
     "@types/react": "^19",
+    "react": "^19.2.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"
   }

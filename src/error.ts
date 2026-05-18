@@ -1,11 +1,11 @@
 export class KintanaApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    /** Raw response body (truncated when thrown from the client). */
-    readonly body: string
-  ) {
+  readonly status: number;
+  readonly bodySnippet: string;
+
+  constructor(message: string, status: number, bodySnippet: string) {
     super(message);
     this.name = "KintanaApiError";
+    this.status = status;
+    this.bodySnippet = bodySnippet;
   }
 }
