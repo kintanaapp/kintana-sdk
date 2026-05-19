@@ -1,6 +1,9 @@
 import { KintanaApiError } from "./error";
 import type {
+  KintanaCreateEmbedFormInput,
   KintanaFormField,
+  KintanaManagedEmbedFormRecord,
+  KintanaManagedEmbedFormSummary,
   KintanaPublicArtistDetail,
   KintanaPublicArtistEmbed,
   KintanaPublicEvent,
@@ -14,12 +17,19 @@ import type {
   KintanaPublicStoreProductDetail,
   KintanaPublicVenueDetail,
   KintanaPublicVenueListed,
+  KintanaUpdateEmbedFormInput,
+  KintanaWorkspaceContactCustomField,
 } from "./types";
 import type { KintanaGroupedCity } from "./locations";
 import { groupVenuesByCity as groupVenuesByCityImpl } from "./locations";
 
 export type {
+  KintanaCreateEmbedFormInput,
+  KintanaEmbedFieldType,
   KintanaFormField,
+  KintanaFormFieldOptions,
+  KintanaManagedEmbedFormRecord,
+  KintanaManagedEmbedFormSummary,
   KintanaPublicEvent,
   KintanaPublicEventListingStatus,
   KintanaPublicFile,
@@ -33,14 +43,21 @@ export type {
   KintanaPublicVenueDetail,
   KintanaPublicArtistEmbed,
   KintanaPublicArtistDetail,
+  KintanaUpdateEmbedFormInput,
+  KintanaWorkspaceContactCustomField,
 } from "./types";
 export { groupVenuesByCityImpl as groupVenuesByCity };
 export type { KintanaGroupedCity } from "./locations";
 export { KintanaApiError };
 
 export type KintanaClientOptions = {
-  /** Workspace credential starting with `kpa_live_…` */
+  /** Publishable credential (`kpa_live_…`) for listings, schemas, and visitor flows */
   apiKey: string;
+  /**
+   * Server-only credential (`kpa_secret_…`) with `workspace.forms` scope for embed-form writes and contact-field helpers.
+   * Optional read fallback for workspace embed-form GET when set without relying on {@link apiKey}.
+   */
+  secretApiKey?: string;
   /** Absolute URL of your Kintana deployment (production: `https://kintana.app`) */
   baseUrl: string;
   fetch?: typeof fetch;
@@ -76,6 +93,23 @@ export type KintanaClient = {
     values: Record<string, string>,
     opts?: { visitorKey?: string }
   ): Promise<SubmitFormResponse>;
+  uploadEmbedFormFile(formId: string, fieldId: string, file: File): Promise<{ ok: boolean; url?: string; error?: string }>;
+  /**
+   * Lists every embed form in the workspace (including inactive). Uses the same `kpa_live` key — **never call from a browser bundle**.
+   */
+  listEmbedFormsWorkspace(): Promise<KintanaManagedEmbedFormSummary[]>;
+  /**
+   * Creates a form (`CUSTOM` by default). Send `fieldsJson` with {@link KintanaFormField} rows; optional `mapsToContactFieldId`
+   * references ids from {@link KintanaClient.listWorkspaceContactCustomFields}.
+   */
+  createEmbedFormWorkspace(body?: KintanaCreateEmbedFormInput): Promise<KintanaManagedEmbedFormRecord>;
+  getEmbedFormWorkspace(formId: string): Promise<KintanaManagedEmbedFormRecord>;
+  updateEmbedFormWorkspace(
+    formId: string,
+    patch: KintanaUpdateEmbedFormInput
+  ): Promise<KintanaManagedEmbedFormRecord>;
+  /** Contact-scoped workspace custom fields for mapping answers onto CRM storage. */
+  listWorkspaceContactCustomFields(): Promise<KintanaWorkspaceContactCustomField[]>;
   listStoreProducts(opts?: {
     limit?: number;
     collection?: string;
@@ -91,13 +125,32 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
   const base = opts.baseUrl.replace(/\/$/, "");
   const fetchImpl = opts.fetch ?? globalThis.fetch.bind(globalThis);
 
+  function bearerEmbedFormsRead(): string {
+    const sec = opts.secretApiKey?.trim();
+    if (sec) return sec;
+    return opts.apiKey.trim();
+  }
+
+  function requireSecretBearer(): string {
+    const s = opts.secretApiKey?.trim();
+    if (!s) {
+      throw new KintanaApiError(
+        "This operation requires secretApiKey (server credential starting with kpa_secret_) with workspace.forms scope.",
+        400,
+        ""
+      );
+    }
+    return s;
+  }
+
   async function requestJson<T>(
     pathWithQuery: string,
-    init: RequestInit & { method?: string; cache?: RequestCache } = {}
+    init: RequestInit & { method?: string; cache?: RequestCache } = {},
+    bearer: string = opts.apiKey.trim()
   ): Promise<T> {
     const method = init.method ?? "GET";
     const headers = new Headers(init.headers ?? {});
-    headers.set("Authorization", `Bearer ${opts.apiKey.trim()}`);
+    headers.set("Authorization", `Bearer ${bearer}`);
     headers.set("Accept", "application/json");
     const { cache = "no-store", ...rest } = init;
     const res = await fetchImpl(`${base}${pathWithQuery}`, {
@@ -215,6 +268,90 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+    },
+
+    async uploadEmbedFormFile(formId: string, fieldId: string, file: File) {
+      const id = encodeURIComponent(formId);
+      const fd = new FormData();
+      fd.append("token", opts.apiKey.trim());
+      fd.append("fieldId", fieldId);
+      fd.append("file", file);
+      const res = await fetchImpl(`${base}/api/public/forms/${id}/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${opts.apiKey.trim()}` },
+        body: fd,
+      });
+      const text = await res.text();
+      let j: { ok?: boolean; url?: string; error?: string } = {};
+      try {
+        j = JSON.parse(text) as typeof j;
+      } catch {
+        /* ignore */
+      }
+      if (!res.ok) {
+        return { ok: false as const, error: typeof j.error === "string" ? j.error : `Upload failed (${res.status})` };
+      }
+      if (!j.ok || typeof j.url !== "string") {
+        return { ok: false as const, error: typeof j.error === "string" ? j.error : "Upload failed" };
+      }
+      return { ok: true as const, url: j.url };
+    },
+
+    async listEmbedFormsWorkspace(): Promise<KintanaManagedEmbedFormSummary[]> {
+      const data = await requestJson<{ forms?: KintanaManagedEmbedFormSummary[] }>(
+        `/api/public/v1/workspace/embed-forms`,
+        {},
+        bearerEmbedFormsRead()
+      );
+      return data.forms ?? [];
+    },
+
+    async createEmbedFormWorkspace(
+      body?: KintanaCreateEmbedFormInput
+    ): Promise<KintanaManagedEmbedFormRecord> {
+      return requestJson<KintanaManagedEmbedFormRecord>(
+        `/api/public/v1/workspace/embed-forms`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body ?? {}),
+        },
+        requireSecretBearer()
+      );
+    },
+
+    async getEmbedFormWorkspace(formId: string): Promise<KintanaManagedEmbedFormRecord> {
+      const id = encodeURIComponent(formId);
+      return requestJson<KintanaManagedEmbedFormRecord>(
+        `/api/public/v1/workspace/embed-forms/${id}`,
+        {},
+        bearerEmbedFormsRead()
+      );
+    },
+
+    async updateEmbedFormWorkspace(
+      formId: string,
+      patch: KintanaUpdateEmbedFormInput
+    ): Promise<KintanaManagedEmbedFormRecord> {
+      const id = encodeURIComponent(formId);
+      return requestJson<KintanaManagedEmbedFormRecord>(
+        `/api/public/v1/workspace/embed-forms/${id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch ?? {}),
+        },
+        requireSecretBearer()
+      );
+    },
+
+    async listWorkspaceContactCustomFields(): Promise<KintanaWorkspaceContactCustomField[]> {
+      const data = await requestJson<{ fields?: KintanaWorkspaceContactCustomField[] }>(
+        `/api/public/v1/workspace/contact-custom-fields`,
+        {},
+        requireSecretBearer()
+      );
+      return data.fields ?? [];
     },
 
     async listStoreProducts(listOpts?: {

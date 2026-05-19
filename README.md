@@ -1,4 +1,4 @@
-## @kintana/sdk · v0.4.2
+## @kintana/sdk · v0.5.0
 
 TypeScript helpers for embedding Kintana’s read-only endpoints from your own storefront (Next.js, Astro, Remix, etc.). Checkout still happens inside your Kintana deployment.
 
@@ -49,11 +49,12 @@ export function HelloShows() {
 
 ### Core client
 
-#### `createKintanaClient({ apiKey, baseUrl, fetch? })`
+#### `createKintanaClient({ apiKey, secretApiKey?, baseUrl, fetch? })`
 
 | Option | Meaning |
 | --- | --- |
-| `apiKey` | Workspace credential that starts with `kpa_live_…` created in Business → Websites → Custom site |
+| `apiKey` | Publishable credential (`kpa_live_…`) created in Business → Websites → Custom site |
+| `secretApiKey` | Optional server credential (`kpa_secret_…`) with `workspace.forms` scope for embed-form writes and CRM field helpers |
 | `baseUrl` | Absolute URL of Kintana, no trailing slash |
 | `fetch` | Optional override (`globalThis.fetch` by default); useful inside tests |
 
@@ -126,6 +127,48 @@ await client.submitForm(formIdFromEnv, {
 ```
 
 Responses include `{ ok: true, successMessage, redirectUrl }`. When `redirectUrl` is populated the browser helper inside `@kintana/sdk/react` will navigate automatically after success.
+
+### Workspace form management (**server-side writes**)
+
+Listing and loading workspace embed forms accepts **`apiKey`** (`kpa_live_…`) or **`secretApiKey`**. Creating, updating forms and listing CRM contact-field definitions require **`secretApiKey`** with `workspace.forms` scope — **never ship that credential in browser bundles**.
+
+| Client method | Credential | REST |
+| --- | --- | --- |
+| `listEmbedFormsWorkspace()` | Publishable or secret | `GET /api/public/v1/workspace/embed-forms` |
+| `createEmbedFormWorkspace(body?)` | Secret only | `POST /api/public/v1/workspace/embed-forms` |
+| `getEmbedFormWorkspace(id)` | Publishable or secret | `GET /api/public/v1/workspace/embed-forms/:id` |
+| `updateEmbedFormWorkspace(id, patch)` | Secret only | `PATCH /api/public/v1/workspace/embed-forms/:id` |
+| `listWorkspaceContactCustomFields()` | Secret only | `GET /api/public/v1/workspace/contact-custom-fields` |
+
+- **`fieldsJson`** on create/update is an array of **`KintanaFormField`** objects (`id`, `type`, `label`, optional `options`, `mapsToContactFieldId`, …). Use **`listWorkspaceContactCustomFields()`** to resolve ids for `mapsToContactFieldId`; defining new CRM custom fields still happens in Business settings — the API maps submissions onto existing definitions only.
+- **`createEmbedFormWorkspace`** defaults **`kind`** to `CUSTOM` when omitted (suited to developer-built flows). Other kinds behave like the dashboard wizard (`NEWSLETTER`, `SHOW_REQUEST`, …).
+- Updates are audited when an owning workspace admin can be resolved (`details.via: "secret_public_api_v1"`).
+
+```ts
+// Example: Node / Edge handler — not for the browser
+const client = createKintanaClient({
+  apiKey: process.env.KINTANA_API_KEY!, // publishable
+  secretApiKey: process.env.KINTANA_SECRET_API_KEY,
+  baseUrl: process.env.KINTANA_BASE_URL!,
+});
+
+const defs = await client.listWorkspaceContactCustomFields();
+const emailField = defs.find((f) => f.type === "EMAIL");
+
+const form = await client.createEmbedFormWorkspace({
+  title: "Partner referral",
+  slug: "partner-referral",
+  fieldsJson: [
+    { id: "company", type: "text", label: "Company", required: true },
+    { id: "email", type: "email", label: "Work email", required: true, mapsToContactFieldId: emailField?.id ?? undefined },
+  ],
+  active: true,
+});
+
+await client.updateEmbedFormWorkspace(form.id, {
+  successMessage: "<p>Thanks — we will reply shortly.</p>",
+});
+```
 
 Errors throw `KintanaApiError` with:
 
@@ -210,7 +253,7 @@ The async loader at `{baseUrl}/_t/k.js` records first-party hits and dispatches 
 
 ### Deferred product surface (tell clients explicitly)
 
-Generic marketing CMS pages (`/pages/{slug}`), partner/press tables, aggregated investor KPIs (`/stats`), RRULE recurrence, richer embed form field types remain **outside** `@kintana/sdk` until separate releases document them—continue using Astro/Next MDX for long-form storytelling for now.
+Generic marketing CMS pages (`/pages/{slug}`), partner/press tables, aggregated investor KPIs (`/stats`), RRULE recurrence remain **outside** `@kintana/sdk` until separate releases document them—continue using Astro/Next MDX for long-form storytelling for now.
 
 ### Form schema caching
 

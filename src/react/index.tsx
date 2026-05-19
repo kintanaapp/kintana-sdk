@@ -214,8 +214,21 @@ export function EventDetail({
   );
 }
 
-function fieldInputType(t: string): React.HTMLInputTypeAttribute {
-  return t === "email" ? "email" : "text";
+function inputTypeForField(t: string): React.HTMLInputTypeAttribute {
+  switch (t) {
+    case "email":
+      return "email";
+    case "number":
+      return "number";
+    case "date":
+      return "date";
+    case "url":
+      return "url";
+    case "phone":
+      return "tel";
+    default:
+      return "text";
+  }
 }
 
 export function EmbedForm({
@@ -233,6 +246,7 @@ export function EmbedForm({
   const [loading, setLoading] = React.useState(true);
   const [submitting, setSubmitting] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
+  const [files, setFiles] = React.useState<Record<string, File | undefined>>({});
 
   React.useEffect(() => {
     let alive = true;
@@ -257,13 +271,36 @@ export function EmbedForm({
     if (!schema) return;
     setSubmitting(true);
     setMessage(null);
-    const fd = new FormData(e.currentTarget);
-    const values: Record<string, string> = {};
-    for (const f of schema.fields) {
-      const v = fd.get(f.id);
-      values[f.id] = typeof v === "string" ? v : "";
-    }
+    const formEl = e.currentTarget;
     try {
+      const values: Record<string, string> = {};
+      for (const f of schema.fields) {
+        if (f.type === "multiselect") {
+          const fd = new FormData(formEl);
+          const picked = fd.getAll(f.id).filter((x): x is string => typeof x === "string");
+          values[f.id] = picked.join(", ");
+        } else if (f.type === "boolean") {
+          const el = formEl.elements.namedItem(f.id);
+          values[f.id] =
+            el instanceof HTMLInputElement && el.type === "checkbox" && el.checked ? "true" : "";
+        } else if (f.type === "file") {
+          const pending = files[f.id];
+          if (pending) {
+            const up = await client.uploadEmbedFormFile(schema.id, f.id, pending);
+            if (!up.ok || !up.url) {
+              setMessage(up.error ?? "Upload failed.");
+              return;
+            }
+            values[f.id] = up.url;
+          } else {
+            values[f.id] = "";
+          }
+        } else {
+          const fd = new FormData(formEl);
+          const v = fd.get(f.id);
+          values[f.id] = typeof v === "string" ? v : "";
+        }
+      }
       const result = await client.submitForm(schema.id, values);
       if (result.ok !== true) {
         setMessage("Something went wrong.");
@@ -273,6 +310,7 @@ export function EmbedForm({
       const redirectHint = typeof result.redirectUrl === "string" ? result.redirectUrl : null;
 
       setMessage(successText ?? "Submitted.");
+      setFiles({});
       if (redirectHint) {
         window.location.assign(redirectHint);
         return;
@@ -290,33 +328,128 @@ export function EmbedForm({
   if (loading) return <div className={className}>Loading…</div>;
   if (!schema) return <div className={className}>{message ?? "Unavailable."}</div>;
 
+  const controlStyle = { padding: 10, borderRadius: 8, border: "1px solid #ddd" } as const;
+
   return (
     <div className={className}>
       <h2 style={{ fontSize: "1.125rem", marginBottom: 12 }}>{schema.title}</h2>
       <form onSubmit={(e) => void submit(e)} style={{ display: "grid", gap: 14 }}>
-        {schema.fields.map((f) => (
-          <label key={f.id} style={{ display: "grid", gap: 6, fontWeight: 500 }}>
-            <span>
-              {f.label}
-              {f.required ? " *" : ""}
-            </span>
-            {f.type === "textarea" ? (
-              <textarea
-                name={f.id}
-                required={Boolean(f.required)}
-                rows={4}
-                style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
-              />
-            ) : (
+        {schema.fields.map((f) => {
+          const hint =
+            f.helpText !== undefined && f.helpText !== "" ? (
+              <span style={{ fontWeight: 400, fontSize: "0.8125rem", color: "#666" }}>{f.helpText}</span>
+            ) : null;
+
+          if (f.type === "textarea") {
+            return (
+              <label key={f.id} style={{ display: "grid", gap: 6, fontWeight: 500 }}>
+                <span>
+                  {f.label}
+                  {f.required ? " *" : ""}
+                </span>
+                {hint}
+                <textarea
+                  name={f.id}
+                  required={Boolean(f.required)}
+                  placeholder={f.placeholder}
+                  rows={4}
+                  style={{ ...controlStyle, fontFamily: "inherit" }}
+                />
+              </label>
+            );
+          }
+
+          if (f.type === "boolean") {
+            return (
+              <label key={f.id} style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 500 }}>
+                <input type="checkbox" name={f.id} value="true" required={Boolean(f.required)} />
+                <span>{f.label}</span>
+              </label>
+            );
+          }
+
+          if (f.type === "select") {
+            const choices = f.options?.choices ?? [];
+            return (
+              <label key={f.id} style={{ display: "grid", gap: 6, fontWeight: 500 }}>
+                <span>
+                  {f.label}
+                  {f.required ? " *" : ""}
+                </span>
+                {hint}
+                <select name={f.id} required={Boolean(f.required)} style={controlStyle}>
+                  <option value="">—</option>
+                  {choices.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            );
+          }
+
+          if (f.type === "multiselect") {
+            const choices = f.options?.choices ?? [];
+            return (
+              <div key={f.id} style={{ display: "grid", gap: 8 }}>
+                <span style={{ fontWeight: 500 }}>
+                  {f.label}
+                  {f.required ? " *" : ""}
+                </span>
+                {hint}
+                <div style={{ display: "grid", gap: 6 }}>
+                  {choices.map((c) => (
+                    <label key={c} style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 400 }}>
+                      <input type="checkbox" name={f.id} value={c} />
+                      {c}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            );
+          }
+
+          if (f.type === "file") {
+            const accept = (f.options?.acceptMimeTypes ?? []).join(",");
+            return (
+              <div key={f.id} style={{ display: "grid", gap: 6 }}>
+                <span style={{ fontWeight: 500 }}>
+                  {f.label}
+                  {f.required ? " *" : ""}
+                </span>
+                {hint}
+                <input
+                  type="file"
+                  required={Boolean(f.required)}
+                  accept={accept || undefined}
+                  style={controlStyle}
+                  onChange={(ev) => {
+                    const fl = ev.target.files?.[0];
+                    setFiles((prev) => ({ ...prev, [f.id]: fl }));
+                  }}
+                />
+              </div>
+            );
+          }
+
+          return (
+            <label key={f.id} style={{ display: "grid", gap: 6, fontWeight: 500 }}>
+              <span>
+                {f.label}
+                {f.required ? " *" : ""}
+              </span>
+              {hint}
               <input
-                type={fieldInputType(f.type)}
+                type={inputTypeForField(f.type)}
                 name={f.id}
                 required={Boolean(f.required)}
-                style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd" }}
+                placeholder={f.placeholder}
+                style={controlStyle}
               />
-            )}
-          </label>
-        ))}
+            </label>
+          );
+        })}
         <button
           type="submit"
           disabled={submitting}

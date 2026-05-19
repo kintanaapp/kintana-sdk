@@ -98,11 +98,34 @@ export type KintanaPublicFormSummary = {
   title: string;
 };
 
+export type KintanaEmbedFieldType =
+  | "text"
+  | "email"
+  | "textarea"
+  | "number"
+  | "date"
+  | "boolean"
+  | "url"
+  | "phone"
+  | "select"
+  | "multiselect"
+  | "file";
+
+export type KintanaFormFieldOptions = {
+  choices?: string[];
+  acceptMimeTypes?: string[];
+  maxBytes?: number;
+};
+
 export type KintanaFormField = {
   id: string;
-  type: "text" | "email" | "textarea";
+  type: KintanaEmbedFieldType;
   label: string;
   required?: boolean;
+  placeholder?: string;
+  helpText?: string;
+  options?: KintanaFormFieldOptions;
+  mapsToContactFieldId?: string | null;
 };
 
 export type KintanaPublicFormSchema = {
@@ -112,6 +135,62 @@ export type KintanaPublicFormSchema = {
   fields: KintanaFormField[];
   successMessage: string | null;
   redirectUrl: string | null;
+};
+
+/** Workspace management row (`GET /api/public/v1/workspace/embed-forms`). Includes inactive forms. */
+export type KintanaManagedEmbedFormSummary = {
+  id: string;
+  slug: string;
+  kind: string;
+  title: string | null;
+  active: boolean;
+  linkedEventId: string | null;
+  createdAt: string;
+};
+
+/** Full embed form definition returned by workspace management endpoints (matches persisted shape). */
+export type KintanaManagedEmbedFormRecord = KintanaManagedEmbedFormSummary & {
+  workspaceId: string;
+  fieldsJson: unknown;
+  successMessage: string | null;
+  redirectUrl: string | null;
+  doubleOptIn: boolean;
+  updatedAt: string;
+};
+
+/** Create body for `POST /api/public/v1/workspace/embed-forms`. */
+export type KintanaCreateEmbedFormInput = {
+  /** Defaults to `CUSTOM` when omitted (suited for programmatic builders). */
+  kind?: string;
+  title?: string | null;
+  slug?: string;
+  linkedEventId?: string | null;
+  /** When set, replaces kind defaults; must contain at least one valid field. */
+  fieldsJson?: KintanaFormField[];
+  successMessage?: string | null;
+  redirectUrl?: string | null;
+  active?: boolean;
+};
+
+/** Patch body for `PATCH /api/public/v1/workspace/embed-forms/:id` (same keys as dashboard API). */
+export type KintanaUpdateEmbedFormInput = {
+  title?: string | null;
+  /** Alias accepted by the API for legacy/dashboard payloads */
+  name?: string | null;
+  fieldsJson?: KintanaFormField[];
+  successMessage?: string | null;
+  redirectUrl?: string | null;
+  active?: boolean;
+  slug?: string;
+};
+
+/** Contact custom field defs for wiring `mapsToContactFieldId` on embed fields. */
+export type KintanaWorkspaceContactCustomField = {
+  id: string;
+  name: string;
+  type: string;
+  entity: string;
+  options: unknown;
 };
 
 export type KintanaPublicStoreVariant = {
