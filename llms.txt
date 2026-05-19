@@ -22,6 +22,9 @@ HTTP prefixes (HTTPS only in production):
 - `GET /api/public/v1/forms`
 - `GET /api/public/v1/forms/{id}/schema` (**5 min public cache + etag**; safe to SSR)
 - `POST /api/public/v1/forms/{id}/submit`
+- `GET /api/public/v1/store/products` + `GET /api/public/v1/store/products/{idOrSlug}` (Pro store enabled; `productUrl` / `storeUrl` for checkout on Kintana)
+- `GET /api/public/v1/store/collections` + `GET /api/public/v1/store/collections/{idOrSlug}`
+- `GET /api/public/v1/files` + `GET /api/public/v1/files/{id}` (workspace files with **link** visibility only)
 
 Exports:
 

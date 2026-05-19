@@ -1,4 +1,4 @@
-## @kintana/sdk · v0.4.1
+## @kintana/sdk · v0.4.2
 
 TypeScript helpers for embedding Kintana’s read-only endpoints from your own storefront (Next.js, Astro, Remix, etc.). Checkout still happens inside your Kintana deployment.
 
@@ -162,6 +162,30 @@ Every venue now ships a stable `slug` (plus `capacity`, coordinates, notes). `ge
 #### `client.groupVenuesByCity(venues)` (also `import { groupVenuesByCity } from "@kintana/sdk/locations"`)
 
 Build `/locations` navigation without a bespoke API: group on `(city, country)` and sort venues alphabetically.
+
+### Store (Pro workspaces with store enabled)
+
+Headless merchandising: list products on your site, send shoppers to `productUrl` for checkout on Kintana.
+
+#### `await client.listStoreProducts({ limit?, collection? })`
+
+Active products with resolved image URLs, `priceFromCents`, `inStock`, and absolute `productUrl` / `storeUrl`.
+
+#### `await client.getStoreProduct(idOrSlug)`
+
+Adds `variants[]` with `priceCents`, `compareAtCents`, `availableQuantity` (`null` = unlimited), and `inStock`.
+
+#### `await client.listStoreCollections({ limit? })` / `await client.getStoreCollection(idOrSlug)`
+
+Collection summaries include `productCount` and `collectionUrl`. Detail responses embed the same product summaries as the list endpoint.
+
+Returns `404` when the workspace is not on Pro, store is disabled, or the slug is unknown.
+
+### Link-shareable files
+
+#### `await client.listFiles({ limit?, folderId? })` / `await client.getFile(id)`
+
+Only workspace files marked **Anyone with the link** in Business → Files are returned. Each row includes an absolute `url` suitable for `<img src>` on external sites.
 
 ### Tracker & custom DOM events
 

@@ -113,3 +113,61 @@ export type KintanaPublicFormSchema = {
   successMessage: string | null;
   redirectUrl: string | null;
 };
+
+export type KintanaPublicStoreVariant = {
+  id: string;
+  name: string;
+  sku: string | null;
+  priceCents: number;
+  compareAtCents: number | null;
+  /** `null` = unlimited inventory */
+  availableQuantity: number | null;
+  inStock: boolean;
+};
+
+export type KintanaPublicStoreProductImage = {
+  url: string;
+  alt: string | null;
+};
+
+export type KintanaPublicStoreProduct = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  currency: string;
+  priceFromCents: number | null;
+  compareAtCents: number | null;
+  inStock: boolean;
+  images: KintanaPublicStoreProductImage[];
+  productUrl: string;
+  storeUrl: string;
+};
+
+export type KintanaPublicStoreProductDetail = KintanaPublicStoreProduct & {
+  variants: KintanaPublicStoreVariant[];
+};
+
+export type KintanaPublicStoreCollection = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  productCount: number;
+  collectionUrl: string;
+  storeUrl: string;
+};
+
+export type KintanaPublicStoreCollectionDetail = KintanaPublicStoreCollection & {
+  products: KintanaPublicStoreProduct[];
+};
+
+export type KintanaPublicFile = {
+  id: string;
+  name: string;
+  url: string;
+  contentType: string;
+  size: number;
+  createdAt: string;
+};

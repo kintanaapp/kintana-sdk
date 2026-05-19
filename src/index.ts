@@ -5,8 +5,13 @@ import type {
   KintanaPublicArtistEmbed,
   KintanaPublicEvent,
   KintanaPublicEventListingStatus,
+  KintanaPublicFile,
   KintanaPublicFormSchema,
   KintanaPublicFormSummary,
+  KintanaPublicStoreCollection,
+  KintanaPublicStoreCollectionDetail,
+  KintanaPublicStoreProduct,
+  KintanaPublicStoreProductDetail,
   KintanaPublicVenueDetail,
   KintanaPublicVenueListed,
 } from "./types";
@@ -17,8 +22,13 @@ export type {
   KintanaFormField,
   KintanaPublicEvent,
   KintanaPublicEventListingStatus,
+  KintanaPublicFile,
   KintanaPublicFormSchema,
   KintanaPublicFormSummary,
+  KintanaPublicStoreCollection,
+  KintanaPublicStoreCollectionDetail,
+  KintanaPublicStoreProduct,
+  KintanaPublicStoreProductDetail,
   KintanaPublicVenueListed,
   KintanaPublicVenueDetail,
   KintanaPublicArtistEmbed,
@@ -66,6 +76,15 @@ export type KintanaClient = {
     values: Record<string, string>,
     opts?: { visitorKey?: string }
   ): Promise<SubmitFormResponse>;
+  listStoreProducts(opts?: {
+    limit?: number;
+    collection?: string;
+  }): Promise<KintanaPublicStoreProduct[]>;
+  getStoreProduct(idOrSlug: string): Promise<KintanaPublicStoreProductDetail>;
+  listStoreCollections(opts?: { limit?: number }): Promise<KintanaPublicStoreCollection[]>;
+  getStoreCollection(idOrSlug: string): Promise<KintanaPublicStoreCollectionDetail>;
+  listFiles(opts?: { limit?: number; folderId?: string | null }): Promise<KintanaPublicFile[]>;
+  getFile(id: string): Promise<KintanaPublicFile>;
 };
 
 export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
@@ -196,6 +215,79 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+    },
+
+    async listStoreProducts(listOpts?: {
+      limit?: number;
+      collection?: string;
+    }): Promise<KintanaPublicStoreProduct[]> {
+      const q = new URLSearchParams();
+      const limit = Math.min(100, Math.max(1, listOpts?.limit ?? 50));
+      q.set("limit", String(limit));
+      if (listOpts?.collection?.trim()) q.set("collection", listOpts.collection.trim());
+      const data = await requestJson<{ products?: KintanaPublicStoreProduct[] }>(
+        `/api/public/v1/store/products?${q}`
+      );
+      return data.products ?? [];
+    },
+
+    async getStoreProduct(idOrSlug: string): Promise<KintanaPublicStoreProductDetail> {
+      const id = encodeURIComponent(idOrSlug);
+      const data = await requestJson<{ product?: KintanaPublicStoreProductDetail }>(
+        `/api/public/v1/store/products/${id}`
+      );
+      if (!data.product) {
+        throw new KintanaApiError("Malformed response from Kintana API (missing product)", 500, "");
+      }
+      return data.product;
+    },
+
+    async listStoreCollections(listOpts?: {
+      limit?: number;
+    }): Promise<KintanaPublicStoreCollection[]> {
+      const limit = Math.min(100, Math.max(1, listOpts?.limit ?? 50));
+      const data = await requestJson<{ collections?: KintanaPublicStoreCollection[] }>(
+        `/api/public/v1/store/collections?limit=${limit}`
+      );
+      return data.collections ?? [];
+    },
+
+    async getStoreCollection(idOrSlug: string): Promise<KintanaPublicStoreCollectionDetail> {
+      const id = encodeURIComponent(idOrSlug);
+      const data = await requestJson<{ collection?: KintanaPublicStoreCollectionDetail }>(
+        `/api/public/v1/store/collections/${id}`
+      );
+      if (!data.collection) {
+        throw new KintanaApiError(
+          "Malformed response from Kintana API (missing collection)",
+          500,
+          ""
+        );
+      }
+      return data.collection;
+    },
+
+    async listFiles(listOpts?: {
+      limit?: number;
+      folderId?: string | null;
+    }): Promise<KintanaPublicFile[]> {
+      const q = new URLSearchParams();
+      const limit = Math.min(100, Math.max(1, listOpts?.limit ?? 50));
+      q.set("limit", String(limit));
+      if (listOpts?.folderId) q.set("folderId", listOpts.folderId);
+      const data = await requestJson<{ files?: KintanaPublicFile[] }>(
+        `/api/public/v1/files?${q}`
+      );
+      return data.files ?? [];
+    },
+
+    async getFile(id: string): Promise<KintanaPublicFile> {
+      const fileId = encodeURIComponent(id);
+      const data = await requestJson<{ file?: KintanaPublicFile }>(`/api/public/v1/files/${fileId}`);
+      if (!data.file) {
+        throw new KintanaApiError("Malformed response from Kintana API (missing file)", 500, "");
+      }
+      return data.file;
     },
   };
 }
