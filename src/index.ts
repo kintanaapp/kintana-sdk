@@ -1,4 +1,5 @@
 import { KintanaApiError } from "./error";
+import { pickFormFromList, type FindFormOpts } from "./find-form";
 import type {
   KintanaCreateEmbedFormInput,
   KintanaFormField,
@@ -11,6 +12,11 @@ import type {
   KintanaPublicFile,
   KintanaPublicFormSchema,
   KintanaPublicFormSummary,
+  KintanaGalleryItem,
+  KintanaSiteAssetSlot,
+  KintanaSiteAssets,
+  KintanaSiteInfo,
+  KintanaSiteManifest,
   KintanaPublicStoreCollection,
   KintanaPublicStoreCollectionDetail,
   KintanaPublicStoreProduct,
@@ -35,6 +41,11 @@ export type {
   KintanaPublicFile,
   KintanaPublicFormSchema,
   KintanaPublicFormSummary,
+  KintanaGalleryItem,
+  KintanaSiteAssetSlot,
+  KintanaSiteAssets,
+  KintanaSiteInfo,
+  KintanaSiteManifest,
   KintanaPublicStoreCollection,
   KintanaPublicStoreCollectionDetail,
   KintanaPublicStoreProduct,
@@ -49,6 +60,7 @@ export type {
 export { groupVenuesByCityImpl as groupVenuesByCity };
 export type { KintanaGroupedCity } from "./locations";
 export { KintanaApiError };
+export { pickFormFromList, type FindFormOpts } from "./find-form";
 
 export type KintanaClientOptions = {
   /** Publishable credential (`kpa_live_…`) for listings, schemas, and visitor flows */
@@ -87,6 +99,8 @@ export type KintanaClient = {
   getVenue(idOrSlug: string): Promise<KintanaPublicVenueDetail>;
   groupVenuesByCity(venues: readonly KintanaPublicVenueListed[]): KintanaGroupedCity[];
   listForms(): Promise<KintanaPublicFormSummary[]>;
+  /** Resolve an active embed form by slug (preferred) or kind via {@link listForms}. */
+  findForm(opts: FindFormOpts): Promise<KintanaPublicFormSummary | null>;
   getFormSchema(formId: string, opts?: { cache?: RequestCache }): Promise<KintanaPublicFormSchema>;
   submitForm(
     formId: string,
@@ -119,6 +133,15 @@ export type KintanaClient = {
   getStoreCollection(idOrSlug: string): Promise<KintanaPublicStoreCollectionDetail>;
   listFiles(opts?: { limit?: number; folderId?: string | null }): Promise<KintanaPublicFile[]>;
   getFile(id: string): Promise<KintanaPublicFile>;
+  /** Site metadata for the credential's bound custom site. */
+  getSite(): Promise<KintanaSiteInfo>;
+  /** Typed gallery items (alt, caption, order). Requires site-bound key. */
+  getSiteGallery(): Promise<KintanaGalleryItem[]>;
+  /** Named brand asset slots resolved to public URLs. */
+  getSiteAssets(): Promise<KintanaSiteAssets>;
+  getSiteAsset(slot: keyof KintanaSiteAssets): Promise<KintanaSiteAssetSlot>;
+  /** Gallery, assets, and form refs in one call for static builds. */
+  getSiteManifest(): Promise<KintanaSiteManifest>;
 };
 
 export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
@@ -245,6 +268,11 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
     async listForms(): Promise<KintanaPublicFormSummary[]> {
       const data = await requestJson<{ forms?: KintanaPublicFormSummary[] }>(`/api/public/v1/forms`);
       return data.forms ?? [];
+    },
+
+    async findForm(opts: FindFormOpts): Promise<KintanaPublicFormSummary | null> {
+      const forms = await requestJson<{ forms?: KintanaPublicFormSummary[] }>(`/api/public/v1/forms`);
+      return pickFormFromList(forms.forms ?? [], opts);
     },
 
     async getFormSchema(formId: string, schemaOpts?: { cache?: RequestCache }): Promise<KintanaPublicFormSchema> {
@@ -425,6 +453,39 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
         throw new KintanaApiError("Malformed response from Kintana API (missing file)", 500, "");
       }
       return data.file;
+    },
+
+    async getSite(): Promise<KintanaSiteInfo> {
+      const data = await requestJson<{ site?: KintanaSiteInfo }>(`/api/public/v1/site`);
+      if (!data.site) {
+        throw new KintanaApiError("Malformed response from Kintana API (missing site)", 500, "");
+      }
+      return data.site;
+    },
+
+    async getSiteGallery(): Promise<KintanaGalleryItem[]> {
+      const data = await requestJson<{ gallery?: KintanaGalleryItem[] }>(`/api/public/v1/site/gallery`);
+      return data.gallery ?? [];
+    },
+
+    async getSiteAssets(): Promise<KintanaSiteAssets> {
+      const data = await requestJson<{ assets?: KintanaSiteAssets }>(`/api/public/v1/site/assets`);
+      return data.assets ?? {};
+    },
+
+    async getSiteAsset(slot: keyof KintanaSiteAssets): Promise<KintanaSiteAssetSlot> {
+      const id = encodeURIComponent(String(slot));
+      const data = await requestJson<{ asset?: KintanaSiteAssetSlot }>(
+        `/api/public/v1/site/assets?slot=${id}`
+      );
+      if (!data.asset) {
+        throw new KintanaApiError(`Asset slot "${String(slot)}" is not set`, 404, "");
+      }
+      return data.asset;
+    },
+
+    async getSiteManifest(): Promise<KintanaSiteManifest> {
+      return requestJson<KintanaSiteManifest>(`/api/public/v1/site/manifest`);
     },
   };
 }

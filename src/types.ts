@@ -15,6 +15,8 @@ export type KintanaPublicVenue = {
   lat: number | null;
   lng: number | null;
   timeZone: string | null;
+  /** Step-free / wheelchair access when set on the venue in Kintana. */
+  wheelchairAccessible?: boolean | null;
 };
 
 export type KintanaPublicVenueListed = KintanaPublicVenue & {
@@ -33,6 +35,12 @@ export type KintanaPublicLineupEntry = {
   role: string | null;
   sortOrder: number;
   imageUrl: string | null;
+};
+
+export type KintanaPublicEventReview = {
+  quote: string | null;
+  stars: number;
+  source: string;
 };
 
 export type KintanaPublicTour = {
@@ -69,6 +77,8 @@ export type KintanaPublicEvent = {
   priceFrom?: number | null;
   priceCurrency?: string | null;
   tags?: string[];
+  /** Press quotes when configured on the event in Kintana. */
+  reviews?: KintanaPublicEventReview[];
 };
 
 export type KintanaArtistResidency = "resident" | "regular" | "visiting" | "headline-guest";
@@ -249,4 +259,43 @@ export type KintanaPublicFile = {
   contentType: string;
   size: number;
   createdAt: string;
+};
+
+export type KintanaSiteInfo = {
+  id: string;
+  name: string;
+  slug: string;
+  galleryFolderId: string | null;
+  brandAssetsFolderId: string | null;
+};
+
+export type KintanaGalleryItem = {
+  id: string;
+  url: string;
+  alt?: string;
+  caption?: string;
+  sortOrder: number;
+};
+
+export type KintanaSiteAssetSlot = {
+  url: string;
+  alt?: string;
+};
+
+export type KintanaSiteAssets = Partial<
+  Record<"logo" | "founderHeadshot" | "heroFallback", KintanaSiteAssetSlot>
+>;
+
+export type KintanaManifestFormRef = {
+  id: string;
+  slug: string;
+  kind: string;
+};
+
+export type KintanaSiteManifest = {
+  site: { id: string; name: string; slug: string };
+  updatedAt: string;
+  gallery: KintanaGalleryItem[];
+  assets: KintanaSiteAssets;
+  forms: Record<string, KintanaManifestFormRef | null>;
 };

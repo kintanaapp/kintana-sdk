@@ -1,6 +1,6 @@
-## @kintana/sdk · v0.5.0
+## @kintana/sdk · v0.9.0
 
-TypeScript helpers for embedding Kintana’s read-only endpoints from your own storefront (Next.js, Astro, Remix, etc.). Checkout still happens inside your Kintana deployment.
+TypeScript helpers for embedding Kintana’s read-only endpoints from your own storefront (Next.js, Astro, Remix, etc.). Ticket checkout can run on your domain via the `[data-kintana-widget]` embed (Stripe inside an iframe on Kintana); you can still link to `ticketUrl` for the full hosted event page when you prefer.
 
 Install:
 
@@ -84,8 +84,8 @@ Hydrate a dedicated page route with either internal id or public slug:
 
 ```ts
 const show = await client.getEvent(params.slugFromUrl);
-console.log(show.ticketUrl); // Links into Kintana checkout
-console.log(show.embedUrl); // Marketing embed route
+console.log(show.ticketUrl); // Full hosted event page on Kintana
+console.log(show.embedUrl); // iframe checkout route (also used by `[data-kintana-widget]`)
 console.log(show.venue?.slug ?? show.venue?.id); // Stable venue deeplink for `/locations`
 ```
 
@@ -93,11 +93,16 @@ Responses now include richer fields (`doorsOpen`, `showTime`, `lineup`, `headlin
 
 #### `await client.listForms()`
 
-Returns `{ id, slug, title, kind }[]` helpers for dashboards.
+Returns `{ id, slug, title, kind }[]` for active embed forms in the workspace.
+
+#### `await client.findForm({ kind?, slug? })`
+
+Resolves a form without hard-coding ids. Slug wins when both are passed.
 
 ```ts
-const forms = await client.listForms();
-const requestForm = forms.find((f) => f.kind === "SHOW_REQUEST");
+const requestForm = await client.findForm({ kind: "SHOW_REQUEST" });
+// or when you have multiple request forms:
+const partnerForm = await client.findForm({ slug: "partner-request" });
 ```
 
 #### `await client.getFormSchema(formId)`
@@ -105,7 +110,9 @@ const requestForm = forms.find((f) => f.kind === "SHOW_REQUEST");
 Produces fully typed `{ fields, title, redirectUrl }` payloads for crafting custom forms.
 
 ```ts
-const schema = await client.getFormSchema(formIdFromEnv);
+const form = await client.findForm({ kind: "SHOW_REQUEST" });
+if (!form) throw new Error("Create a Request a show form in Kintana");
+const schema = await client.getFormSchema(form.id);
 schema.fields.forEach((field) => {
   console.log(field.id, field.type, field.required ?? false);
 });
@@ -116,7 +123,10 @@ schema.fields.forEach((field) => {
 `values` mirrors `schema.fields[].id`:
 
 ```ts
-await client.submitForm(formIdFromEnv, {
+const form = await client.findForm({ kind: "SHOW_REQUEST" });
+if (!form) throw new Error("Missing form");
+
+await client.submitForm(form.id, {
   firstName: "Taylor",
   lastName: "Fan",
   email: "hey@example.com",
@@ -230,6 +240,31 @@ Returns `404` when the workspace is not on Pro, store is disabled, or the slug i
 
 Only workspace files marked **Anyone with the link** in Business → Files are returned. Each row includes an absolute `url` suitable for `<img src>` on external sites.
 
+Only workspace files marked **Anyone with the link** in Business → Files are returned. Each row includes an absolute `url` suitable for `<img src>` on external sites.
+
+### Custom site gallery, assets, and manifest
+
+Requires a **site-bound** publishable key (create under **Business → Websites → Custom site** after creating a site).
+
+#### `await client.getSiteManifest()`
+
+Primary entry point for static storefronts — gallery, brand assets, and form refs in one call:
+
+```ts
+const { gallery, assets, forms, updatedAt } = await client.getSiteManifest();
+// assets.logo?.url, forms.showRequest?.id, gallery[0].caption, …
+```
+
+Also available individually:
+
+| Method | Endpoint |
+| --- | --- |
+| `getSite()` | `GET /api/public/v1/site` |
+| `getSiteGallery()` | `GET /api/public/v1/site/gallery` |
+| `getSiteAssets()` / `getSiteAsset("logo")` | `GET /api/public/v1/site/assets` |
+
+No folder ids or filename prefixes in env — upload in the dashboard, read via manifest.
+
 ### Tracker & custom DOM events
 
 **Do you need `_t/k.js`?**
@@ -245,7 +280,7 @@ The async loader at `{baseUrl}/_t/k.js` records first-party hits and dispatches 
 | Event | When |
 | --- | --- |
 | `kintana:pageview` | After every automatic pageview payload |
-| `kintana:event_view` | When a `[data-kintana-widget]` iframe boots |
+| `kintana:event_view` | When a `[data-kintana-widget]` checkout iframe boots |
 | `kintana:ticket_click` | Outbound links with `data-kintana-event` **or** same-origin `/event/...` checkout URLs |
 | `kintana:form_submit` | After embedded `[data-kintana-form]` POST succeeds |
 
@@ -318,19 +353,25 @@ Props:
 
 #### `EventDetail`
 
-Hydrates headings, geography, ticketing links, renders `<div data-kintana-widget="event:EVENT_ID"/>`, and eagerly loads `_t/k.js`.
+Hydrates headings, geography, ticketing links, renders `<div data-kintana-widget="event:EVENT_ID"/>`, and eagerly loads `_t/k.js`. The widget iframe loads full ticket selection + Stripe checkout (not a link-out teaser).
 
 #### `EmbedForm`
 
-Fetches schema automatically, submits through `submitForm`.
+Fetches schema automatically, submits through `submitForm`. Pass **`id`**, or resolve by **`kind`** / **`slug`** (no env form id required).
 
 Props:
 
 | Prop | Notes |
 | --- | --- |
-| `id` | EmbedForm id copied from dashboard |
+| `id` | Explicit embed form id (optional if `kind` or `slug` set) |
+| `kind` | e.g. `SHOW_REQUEST` — first active match in workspace |
+| `slug` | Stable slug when multiple forms share a kind |
 | `className` | Wrapper |
 | `onSuccess` | Fires when POST succeeds **and** there's no configured redirect |
+
+```tsx
+<EmbedForm kind="SHOW_REQUEST" />
+```
 
 #### `KintanaTracker`
 

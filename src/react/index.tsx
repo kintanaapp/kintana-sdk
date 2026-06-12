@@ -190,12 +190,6 @@ export function EventDetail({
         >
           Tickets
         </a>
-        <a
-          href={event.embedUrl}
-          style={{ display: "inline-block", padding: "10px 16px", borderRadius: 8, border: "1px solid #ccc" }}
-        >
-          Preview embed
-        </a>
       </div>
       {event.imageUrl ? (
         <img
@@ -208,7 +202,7 @@ export function EventDetail({
       ) : null}
       <div
         data-kintana-widget={`event:${event.id}`}
-        style={{ marginTop: 24, minHeight: 320, borderRadius: 8 }}
+        style={{ marginTop: 24, minHeight: 480, borderRadius: 8 }}
       />
     </article>
   );
@@ -233,10 +227,17 @@ function inputTypeForField(t: string): React.HTMLInputTypeAttribute {
 
 export function EmbedForm({
   id,
+  kind,
+  slug,
   className,
   onSuccess,
 }: {
-  id: string;
+  /** Explicit embed form id (optional when `kind` or `slug` is set). */
+  id?: string;
+  /** Resolve the first active form with this kind, e.g. `SHOW_REQUEST`. */
+  kind?: string;
+  /** Resolve by form slug when you have multiple forms of the same kind. */
+  slug?: string;
   className?: string;
   /** Called after a successful submit when there is no redirect URL. */
   onSuccess?: (schema: KintanaPublicFormSchema) => void;
@@ -250,21 +251,42 @@ export function EmbedForm({
 
   React.useEffect(() => {
     let alive = true;
-    void client
-      .getFormSchema(id)
-      .then((s) => {
+    setLoading(true);
+    setMessage(null);
+    setSchema(null);
+
+    void (async () => {
+      try {
+        let formId = id?.trim() ?? "";
+        if (!formId) {
+          const match = await client.findForm({ kind, slug });
+          formId = match?.id ?? "";
+        }
+        if (!formId) {
+          if (alive) {
+            setMessage(
+              slug
+                ? `No active form with slug “${slug}”.`
+                : kind
+                  ? `No active ${kind} form in this workspace. Create one in Kintana → Marketing → Forms.`
+                  : "Pass id, kind, or slug to EmbedForm."
+            );
+          }
+          return;
+        }
+        const s = await client.getFormSchema(formId);
         if (alive) setSchema(s);
-      })
-      .catch(() => {
+      } catch {
         if (alive) setMessage("Could not load this form.");
-      })
-      .finally(() => {
+      } finally {
         if (alive) setLoading(false);
-      });
+      }
+    })();
+
     return () => {
       alive = false;
     };
-  }, [client, id]);
+  }, [client, id, kind, slug]);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

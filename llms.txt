@@ -10,7 +10,7 @@ Supply `Authorization: Bearer <kpa_live_…>` alongside your deployment base URL
 
 Imports:
 
-- `@kintana/sdk` → `createKintanaClient`, `KintanaApiError`, public types (`KintanaPublicEvent`, `KintanaPublicFormSummary`, …)
+- `@kintana/sdk` → `createKintanaClient`, `KintanaApiError`, `pickFormFromList`, public types (`KintanaPublicEvent`, `KintanaPublicFormSummary`, …)
 - `@kintana/sdk/react` → `KintanaProvider`, `useKintana`, `ShowsList`, `EventDetail`, `EmbedForm`, `KintanaTracker`
 
 HTTP prefixes (HTTPS only in production):
@@ -22,9 +22,16 @@ HTTP prefixes (HTTPS only in production):
 - `GET /api/public/v1/forms`
 - `GET /api/public/v1/forms/{id}/schema` (**5 min public cache + etag**; safe to SSR)
 - `POST /api/public/v1/forms/{id}/submit`
+- Client helpers: `findForm({ kind, slug })`, `pickFormFromList(forms, opts)` — prefer over hard-coded form ids in env
 - `GET /api/public/v1/store/products` + `GET /api/public/v1/store/products/{idOrSlug}` (Pro store enabled; `productUrl` / `storeUrl` for checkout on Kintana)
 - `GET /api/public/v1/store/collections` + `GET /api/public/v1/store/collections/{idOrSlug}`
-- `GET /api/public/v1/files` + `GET /api/public/v1/files/{id}` (workspace files with **link** visibility only)
+- `GET /api/public/v1/files` + `GET /api/public/v1/files/{id}` (workspace files with **link** visibility only; site-bound keys may only list folders bound to that site)
+- Site-bound custom site (requires credential linked to a Custom site row):
+  - `GET /api/public/v1/site`
+  - `GET /api/public/v1/site/gallery` — ordered items with alt/caption
+  - `GET /api/public/v1/site/assets` — named slots (`logo`, `founderHeadshot`, `heroFallback`)
+  - `GET /api/public/v1/site/manifest` — gallery + assets + form refs + `updatedAt`
+- Client: `getSite()`, `getSiteGallery()`, `getSiteAssets()`, `getSiteAsset(slot)`, `getSiteManifest()`
 
 Exports:
 
@@ -39,7 +46,7 @@ Starter repos (copy/paste onboarding):
 - `https://github.com/kintanaapp/kintana-next-starter`
 - `https://github.com/kintanaapp/kintana-astro-starter`
 
-Companion script (`/_t/k.js`) for visitor analytics + hydrating `[data-kintana-form]` / `[data-kintana-widget="event:EVENT_ID"]`.
+Companion script (`/_t/k.js`) for visitor analytics + hydrating `[data-kintana-form]` / `[data-kintana-widget="event:EVENT_ID"]` (loads `/embed/event/{id}` with full Stripe checkout in an iframe).
 
 - Not required if integrators **only** use `createKintanaClient` server-side for REST — required if they use those DOM markers or want ingest CustomEvents / ticket-click hooks.
 - Paste once per layout; snippet lives under **Business → Websites → Custom site** (tracking section). Token is usually the same publish credential as API calls (`kpa_live_…`), unless the host mints an automatic snippet token.
