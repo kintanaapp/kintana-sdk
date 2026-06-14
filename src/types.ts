@@ -5,6 +5,15 @@ export type KintanaPublicEventListingStatus =
   | "cancelled"
   | "past";
 
+export type KintanaPublicEventsScope = "all" | "owned" | "shared";
+
+export type KintanaPublicEventInvolvement =
+  | "lineup"
+  | "venue"
+  | "promoter"
+  | "collaborator"
+  | "tour";
+
 export type KintanaPublicVenue = {
   id: string | null;
   slug: string | null;
@@ -79,6 +88,10 @@ export type KintanaPublicEvent = {
   tags?: string[];
   /** Press quotes when configured on the event in Kintana. */
   reviews?: KintanaPublicEventReview[];
+  /** True when this show is owned by another workspace and visible via collaboration. */
+  isShared?: boolean;
+  /** Workspace that owns ticketing for this show. */
+  hostWorkspace?: { slug: string; name: string };
 };
 
 export type KintanaArtistResidency = "resident" | "regular" | "visiting" | "headline-guest";

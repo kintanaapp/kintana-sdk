@@ -8,7 +8,9 @@ import type {
   KintanaPublicArtistDetail,
   KintanaPublicArtistEmbed,
   KintanaPublicEvent,
+  KintanaPublicEventInvolvement,
   KintanaPublicEventListingStatus,
+  KintanaPublicEventsScope,
   KintanaPublicFile,
   KintanaPublicFormSchema,
   KintanaPublicFormSummary,
@@ -37,7 +39,9 @@ export type {
   KintanaManagedEmbedFormRecord,
   KintanaManagedEmbedFormSummary,
   KintanaPublicEvent,
+  KintanaPublicEventInvolvement,
   KintanaPublicEventListingStatus,
+  KintanaPublicEventsScope,
   KintanaPublicFile,
   KintanaPublicFormSchema,
   KintanaPublicFormSummary,
@@ -85,6 +89,14 @@ export type ListPublicEventsOpts = {
   limit?: number;
   tourId?: string;
   artistSlug?: string;
+  venueSlug?: string;
+  promoterSlug?: string;
+  /** `all` (default) — owned + shared; `owned` — this workspace only; `shared` — collaboration only */
+  scope?: KintanaPublicEventsScope;
+  /** Narrow to how this workspace is involved: lineup, venue, promoter, collaborator, tour */
+  involvement?: KintanaPublicEventInvolvement;
+  /** Shorthand for `involvement: "lineup"` (shows where your linked performer is on the bill) */
+  myLineup?: boolean;
   from?: string;
   to?: string;
   status?: KintanaPublicEventListingStatus;
@@ -200,6 +212,11 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
     q.set("limit", String(limit));
     if (opts?.tourId?.trim()) q.set("tourId", opts.tourId.trim());
     if (opts?.artistSlug?.trim()) q.set("artistSlug", opts.artistSlug.trim());
+    if (opts?.venueSlug?.trim()) q.set("venueSlug", opts.venueSlug.trim());
+    if (opts?.promoterSlug?.trim()) q.set("promoterSlug", opts.promoterSlug.trim());
+    if (opts?.scope && opts.scope !== "all") q.set("scope", opts.scope);
+    if (opts?.involvement) q.set("involvement", opts.involvement);
+    else if (opts?.myLineup) q.set("myLineup", "true");
     if (opts?.from?.trim()) q.set("from", opts.from.trim());
     if (opts?.to?.trim()) q.set("to", opts.to.trim());
     if (opts?.status?.trim()) q.set("status", opts.status.trim());

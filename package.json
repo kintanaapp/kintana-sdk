@@ -1,6 +1,6 @@
 {
   "name": "@kintana/sdk",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": false,
   "description": "Kintana public API client and React helpers for ticketing sites",
   "license": "MIT",

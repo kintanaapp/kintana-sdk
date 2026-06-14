@@ -15,8 +15,10 @@ Imports:
 
 HTTP prefixes (HTTPS only in production):
 
-- `GET /api/public/v1/events?limit=N&tourId=&artistSlug=&from=&to=&status=` (status ∈ `on-sale|sold-out|past|cancelled|postponed|…`)
-- `GET /api/public/v1/events/{idOrSlug}`
+- `GET /api/public/v1/events?limit=N&tourId=&artistSlug=&venueSlug=&promoterSlug=&scope=all|owned|shared&involvement=lineup|venue|promoter|collaborator|tour&myLineup=true&from=&to=&status=` (status ∈ `on-sale|sold-out|past|cancelled|postponed|…`)
+- `GET /api/public/v1/events/{idOrSlug}` — resolves owned **or** shared shows visible to the key workspace
+
+**Shared events:** By default, list/get includes shows the key workspace owns plus shows it is involved in (event/tour collaborator, linked venue/promoter, or lineup artist linked to the workspace). Use `scope=owned|shared` and `involvement=` to filter. Responses include `isShared` and `hostWorkspace`; `ticketUrl` points at the owning workspace’s checkout.
 - `GET /api/public/v1/artists` + `GET /api/public/v1/artists/{idOrSlug}` (embeds `socials`, `reels`, `upcomingEvents[]`)
 - `GET /api/public/v1/venues` + `GET /api/public/v1/venues/{idOrSlug}` (every venue has a `slug`, detail returns `upcomingEvents[]`)
 - `GET /api/public/v1/forms`
@@ -49,5 +51,5 @@ Starter repos (copy/paste onboarding):
 Companion script (`/_t/k.js`) for visitor analytics + hydrating `[data-kintana-form]` / `[data-kintana-widget="event:EVENT_ID"]` (loads `/embed/event/{id}` with full Stripe checkout in an iframe).
 
 - Not required if integrators **only** use `createKintanaClient` server-side for REST — required if they use those DOM markers or want ingest CustomEvents / ticket-click hooks.
-- Paste once per layout; snippet lives under **Business → Websites → Custom site** (tracking section). Token is usually the same publish credential as API calls (`kpa_live_…`), unless the host mints an automatic snippet token.
+- Paste once per layout; snippet lives under **Business → Websites → Custom site**. For custom developer sites, **`data-token` is the Public key** (`kpa_live_…`) — same env var as REST calls. Never put the Secret key in `data-token`. External-site setup may still mint a short-lived JWT when JWT is configured; custom site credentials always use the Public key.
 - HTML shape: `<script async src="{baseUrl}/_t/k.js" data-token="…" data-api-base="{baseUrl}">`

@@ -1,4 +1,4 @@
-## @kintana/sdk · v0.9.0
+## @kintana/sdk · v0.9.1
 
 TypeScript helpers for embedding Kintana’s read-only endpoints from your own storefront (Next.js, Astro, Remix, etc.). Ticket checkout can run on your domain via the `[data-kintana-widget]` embed (Stripe inside an iframe on Kintana); you can still link to `ticketUrl` for the full hosted event page when you prefer.
 
@@ -62,20 +62,33 @@ Returns a `KintanaClient`:
 
 #### `await client.listEvents(opts?)`
 
-Loads website-visible shows. Options:
+Loads website-visible shows for the workspace tied to your API key — **owned shows and shared shows** (venue, promoter, lineup, or explicit collaborator on the bill). Default `scope` is `all`.
 
 | Field | Meaning |
 | --- | --- |
 | `limit` | Max 100, default `24` |
+| `scope` | `all` (default) — owned + shared; `owned` — only shows this workspace created; `shared` — collaboration only |
+| `involvement` | Narrow by role: `lineup`, `venue`, `promoter`, `collaborator`, `tour` |
+| `myLineup` | Shorthand for `involvement: "lineup"` (shows where your linked performer profile is on the bill) |
 | `tourId` | Filter by tour id attached to shows |
 | `artistSlug` | Filter to lineup containing that comedian/party slug |
+| `venueSlug` | Filter by canonical venue slug |
+| `promoterSlug` | Filter by promoter slug |
 | `from` | Inclusive UTC date (`YYYY-MM-DD`) |
 | `to` | Inclusive UTC date (`YYYY-MM-DD`) |
 | `status` | `on-sale`, `sold-out`, `past`, `cancelled`, `postponed`, etc. |
 
+Each event includes `isShared` (true when another workspace owns ticketing) and `hostWorkspace` (`slug`, `name`). `ticketUrl` always points at the host’s checkout page on Kintana.
+
 ```ts
+// All upcoming shows you own or appear on
+await client.listEvents({ limit: 12 });
+
+// Gigs where you're on the lineup but don't own the show
+await client.listEvents({ scope: "shared", myLineup: true });
+
 await client.listEvents({ limit: 12, artistSlug: "taylor-swift-cover-band" });
-await client.listEvents({ status: "past", limit: 20 });
+await client.listEvents({ status: "past", limit: 20, involvement: "lineup" });
 ```
 
 #### `await client.getEvent(idOrSlug)`
@@ -84,7 +97,8 @@ Hydrate a dedicated page route with either internal id or public slug:
 
 ```ts
 const show = await client.getEvent(params.slugFromUrl);
-console.log(show.ticketUrl); // Full hosted event page on Kintana
+console.log(show.ticketUrl); // Full hosted event page on Kintana (host workspace when isShared)
+console.log(show.isShared, show.hostWorkspace); // Collaboration metadata
 console.log(show.embedUrl); // iframe checkout route (also used by `[data-kintana-widget]`)
 console.log(show.venue?.slug ?? show.venue?.id); // Stable venue deeplink for `/locations`
 ```
@@ -272,8 +286,8 @@ No folder ids or filename prefixes in env — upload in the dashboard, read via 
 | Setup | Tracker needed? |
 | --- | --- |
 | Only `createKintanaClient` on the server (lists, detail pages, API-backed forms you render yourself) | **No** — unless you want visit analytics / attribution below |
-| Plain HTML markers `[data-kintana-form]` or `[data-kintana-widget="event:…"]`, ticket-click helpers, or the CustomEvents in this section | **Yes** — load the script once per layout (typically `<head>`). Copy it from **Business → Websites → Custom site** (“Tracking & embedded widgets”). If the snippet shows `YOUR_SITE_CREDENTIAL`, replace it with the secret shown once when you created that credential (same idea as `kpa_live_…` for API calls). |
-| React `KintanaProvider` | Set **`enableTracker`** or render **`KintanaTracker`** — they inject `_t/k.js` using your publish credential |
+| Plain HTML markers `[data-kintana-form]` or `[data-kintana-widget="event:…"]`, ticket-click helpers, or the CustomEvents in this section | **Yes** — load the script once per layout (typically `<head>`). Copy it from **Business → Websites → Custom site**. The tracker **`data-token` is your Public key** (`kpa_live_…`) — the same value as `NEXT_PUBLIC_KINTANA_API_KEY`. Never use the Secret key in the browser. |
+| React `KintanaProvider` | Set **`enableTracker`** or render **`KintanaTracker`** — they inject `_t/k.js` using your Public key |
 
 The async loader at `{baseUrl}/_t/k.js` records first-party hits and dispatches browser events you can bridge into GA4:
 
