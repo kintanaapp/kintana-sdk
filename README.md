@@ -1,4 +1,4 @@
-## @kintana/sdk · v0.9.1
+## @kintana/sdk · v0.11.0
 
 TypeScript helpers for embedding Kintana’s read-only endpoints from your own storefront (Next.js, Astro, Remix, etc.). Ticket checkout can run on your domain via the `[data-kintana-widget]` embed (Stripe inside an iframe on Kintana); you can still link to `ticketUrl` for the full hosted event page when you prefer.
 
@@ -105,54 +105,43 @@ console.log(show.venue?.slug ?? show.venue?.id); // Stable venue deeplink for `/
 
 Responses now include richer fields (`doorsOpen`, `showTime`, `lineup`, `headliner`, nested `venue`, resolved `language`, ticketing context, markdown-friendly copy, pricing hints).
 
-#### `await client.listForms()`
+#### Submission endpoints (headless forms)
 
-Returns `{ id, slug, title, kind }[]` for active embed forms in the workspace.
+Build any form UI on your site and post to Kintana by **endpoint slug**. Only **email** is required server-side; you choose every other field and whether it is required in your UI.
 
-#### `await client.findForm({ kind?, slug? })`
+#### `await client.listEndpoints()`
 
-Resolves a form without hard-coding ids. Slug wins when both are passed.
+Returns `{ slug, intent, title }[]` for active endpoints. Intent is one of `show_request`, `contact`, `newsletter`, `external_lead`, or `custom`.
 
 ```ts
-const requestForm = await client.findForm({ kind: "SHOW_REQUEST" });
-// or when you have multiple request forms:
-const partnerForm = await client.findForm({ slug: "partner-request" });
+const endpoints = await client.listEndpoints();
+const contact = endpoints.find((e) => e.slug === "contact");
 ```
 
-#### `await client.getFormSchema(formId)`
-
-Produces fully typed `{ fields, title, redirectUrl }` payloads for crafting custom forms.
+#### `await client.submitEndpoint(slug, payload)`
 
 ```ts
-const form = await client.findForm({ kind: "SHOW_REQUEST" });
-if (!form) throw new Error("Create a Request a show form in Kintana");
-const schema = await client.getFormSchema(form.id);
-schema.fields.forEach((field) => {
-  console.log(field.id, field.type, field.required ?? false);
-});
-```
-
-#### `await client.submitForm(formId, values, { visitorKey? })`
-
-`values` mirrors `schema.fields[].id`:
-
-```ts
-const form = await client.findForm({ kind: "SHOW_REQUEST" });
-if (!form) throw new Error("Missing form");
-
-await client.submitForm(form.id, {
-  firstName: "Taylor",
-  lastName: "Fan",
+await client.submitEndpoint("contact", {
   email: "hey@example.com",
-  phone: "",
-  country: "US",
-  city: "Nashville",
+  phone: "+15551234567", // optional
+  fields: {
+    firstName: "Taylor",
+    lastName: "Fan",
+    message: "Book us for a private event",
+  },
+  context: {
+    // Page metadata — not shown to the visitor (e.g. location pages)
+    city: "London",
+    country: "United Kingdom",
+  },
 });
 ```
 
-Responses include `{ ok: true, successMessage, redirectUrl }`. When `redirectUrl` is populated the browser helper inside `@kintana/sdk/react` will navigate automatically after success.
+For **show request** endpoints, `city` and `country` must appear in `fields` or `context`. Responses include `{ ok: true, successMessage, redirectUrl }`.
 
-### Workspace form management (**server-side writes**)
+Provision endpoints in Kintana → Marketing → Submission endpoints, or run `npm run setup:endpoints` in your site repo.
+
+### Workspace endpoint management (**server-side writes**)
 
 Listing and loading workspace embed forms accepts **`apiKey`** (`kpa_live_…`) or **`secretApiKey`**. Creating, updating forms and listing CRM contact-field definitions require **`secretApiKey`** with `workspace.forms` scope — **never ship that credential in browser bundles**.
 
@@ -248,13 +237,51 @@ Collection summaries include `productCount` and `collectionUrl`. Detail response
 
 Returns `404` when the workspace is not on Pro, store is disabled, or the slug is unknown.
 
+### Food menu (Pro workspaces with food ordering enabled)
+
+Headless dining catalog: list categories and items on your site. Guests order from Kintana’s hosted QR table or show-night pages.
+
+#### `await client.getFoodMenu()`
+
+Active menu with `currency`, categories, and available items (`priceCents`, `description`, `allergenNote`, `imageUrl`). Returns `404` when food ordering is off, the plan is not Pro, or no menu exists.
+
+```ts
+const menu = await client.getFoodMenu();
+for (const category of menu.categories) {
+  for (const item of category.items) {
+    // item.name, item.priceCents, item.imageUrl
+  }
+}
+```
+
 ### Link-shareable files
 
 #### `await client.listFiles({ limit?, folderId? })` / `await client.getFile(id)`
 
-Only workspace files marked **Anyone with the link** in Business → Files are returned. Each row includes an absolute `url` suitable for `<img src>` on external sites.
+Only workspace files marked **Anyone with the link** are returned via the publishable key. Each row includes an absolute `url` suitable for `<img src>` on external sites.
 
-Only workspace files marked **Anyone with the link** in Business → Files are returned. Each row includes an absolute `url` suitable for `<img src>` on external sites.
+#### Server-side upload (Secret key)
+
+Requires `secretApiKey` (`kpa_secret_…`) with **`workspace.files`** scope — never expose in the browser.
+
+```ts
+const client = createKintanaClient({
+  baseUrl: process.env.KINTANA_BASE_URL!,
+  apiKey: process.env.KINTANA_PUBLIC_API_KEY!,
+  secretApiKey: process.env.KINTANA_SECRET_API_KEY!,
+});
+
+// ≤4MB multipart, or auto (multipart + presigned PUT up to 100MB)
+const file = await client.uploadFileAuto(imageBlob, { folderId: optionalFolderId });
+// file.url is link-visible; readable via listFiles / getFile with the public key
+```
+
+| Method | Endpoint |
+| --- | --- |
+| `uploadFile(file, { folderId?, fileName? })` | `POST /api/public/v1/files` (multipart, ≤4MB) |
+| `presignFileUpload({ fileName, contentType, size, folderId? })` | `POST /api/public/v1/files/upload/presign` |
+| `completeFileUpload({ pendingKey, fileName, contentType, size, folderId? })` | `POST /api/public/v1/files/upload/complete` |
+| `uploadFileAuto(file, opts?)` | Chooses multipart or presign based on size |
 
 ### Custom site gallery, assets, and manifest
 
@@ -277,17 +304,25 @@ Also available individually:
 | `getSiteGallery()` | `GET /api/public/v1/site/gallery` |
 | `getSiteAssets()` / `getSiteAsset("logo")` | `GET /api/public/v1/site/assets` |
 
-No folder ids or filename prefixes in env — upload in the dashboard, read via manifest.
+Upload assets from build scripts with the Secret key, then read them via manifest or `listFiles`.
 
 ### Tracker & custom DOM events
 
-**Do you need `_t/k.js`?**
+**Install `_t/k.js` on every custom or external site layout.** It is technically optional if you only call the REST API from your server, but most teams should treat it as required — without it you lose a large part of the website product.
+
+| Without the tracker | What breaks |
+| --- | --- |
+| Kintana Analytics | No page views from your own domain in **Analytics → Website** or the dashboard traffic chart |
+| Embedded forms | `[data-kintana-form]` markers stay empty `<div>`s |
+| Checkout widgets | `[data-kintana-widget="event:…"]` iframes never boot |
+| Ticket attribution | Ticket clicks and outbound links are not recorded |
+| External site setup | Setup wizard cannot verify your site is live |
 
 | Setup | Tracker needed? |
 | --- | --- |
-| Only `createKintanaClient` on the server (lists, detail pages, API-backed forms you render yourself) | **No** — unless you want visit analytics / attribution below |
+| Only `createKintanaClient` on the server (lists, detail pages, API-backed forms you render yourself) | **Optional** — data-only; no onsite features or Kintana-side analytics for your domain |
 | Plain HTML markers `[data-kintana-form]` or `[data-kintana-widget="event:…"]`, ticket-click helpers, or the CustomEvents in this section | **Yes** — load the script once per layout (typically `<head>`). Copy it from **Business → Websites → Custom site**. The tracker **`data-token` is your Public key** (`kpa_live_…`) — the same value as `NEXT_PUBLIC_KINTANA_API_KEY`. Never use the Secret key in the browser. |
-| React `KintanaProvider` | Set **`enableTracker`** or render **`KintanaTracker`** — they inject `_t/k.js` using your Public key |
+| React `KintanaProvider` | Set **`enableTracker`** or render **`KintanaTracker`** — they inject `_t/k.js` using your Public key (starters ship with `enableTracker`) |
 
 The async loader at `{baseUrl}/_t/k.js` records first-party hits and dispatches browser events you can bridge into GA4:
 
@@ -304,11 +339,20 @@ The async loader at `{baseUrl}/_t/k.js` records first-party hits and dispatches 
 
 Generic marketing CMS pages (`/pages/{slug}`), partner/press tables, aggregated investor KPIs (`/stats`), RRULE recurrence remain **outside** `@kintana/sdk` until separate releases document them—continue using Astro/Next MDX for long-form storytelling for now.
 
-### Form schema caching
+### React form helper
 
-`GET /api/public/v1/forms/{id}/schema` ships `Cache-Control: public, max-age=300, stale-while-revalidate=600` plus SHA-256 etags keyed to the normalized field list—`client.getFormSchema` defaults to browser caching (`fetch` cache `default`) so SSR pipelines can hydrate forms without disabling HTTP caches entirely.
+Use **`useKintanaSubmit(slug)`** with your own markup. It wraps `submitEndpoint`, tracks loading/success/error, and follows redirect URLs when configured.
 
----
+```tsx
+"use client";
+
+import { KintanaProvider, useKintanaSubmit } from "@kintana/sdk/react";
+
+function ContactForm() {
+  const { submit, submitting, message, error } = useKintanaSubmit("contact");
+  // render inputs, call submit({ email, fields: { ... } }) on submit
+}
+```
 
 
 ### React helpers (`@kintana/sdk/react`)
@@ -369,23 +413,9 @@ Props:
 
 Hydrates headings, geography, ticketing links, renders `<div data-kintana-widget="event:EVENT_ID"/>`, and eagerly loads `_t/k.js`. The widget iframe loads full ticket selection + Stripe checkout (not a link-out teaser).
 
-#### `EmbedForm`
+#### `useKintanaSubmit(slug)`
 
-Fetches schema automatically, submits through `submitForm`. Pass **`id`**, or resolve by **`kind`** / **`slug`** (no env form id required).
-
-Props:
-
-| Prop | Notes |
-| --- | --- |
-| `id` | Explicit embed form id (optional if `kind` or `slug` set) |
-| `kind` | e.g. `SHOW_REQUEST` — first active match in workspace |
-| `slug` | Stable slug when multiple forms share a kind |
-| `className` | Wrapper |
-| `onSuccess` | Fires when POST succeeds **and** there's no configured redirect |
-
-```tsx
-<EmbedForm kind="SHOW_REQUEST" />
-```
+Headless submit helper for custom form UI. Returns `{ submit, submitting, message, error }`. Email is required in every payload.
 
 #### `KintanaTracker`
 
@@ -440,6 +470,35 @@ export default async function Page({
 ```
 
 > Tip: Prefer server-only secrets for SSR when possible (`KINTANA_SERVER_KEY`). Browser widgets still require `NEXT_PUBLIC_*` equivalents.
+
+---
+
+### Fan mobile app client (`/api/fan/v1`)
+
+For Capacitor / native fan apps, enable `fanAppChannel: true` and optional `accessToken` from customer sign-in:
+
+```ts
+const client = createKintanaClient({
+  apiKey: "kpa_live_…",
+  baseUrl: "https://kintana.app",
+  fanAppChannel: true,
+  accessToken: storedJwt ?? undefined,
+});
+
+const shows = await client.listFanEvents();
+const detail = await client.getFanEvent("friday-night");
+const tickets = await client.listFanTickets(); // Bearer via X-Customer-Authorization
+
+// Native sign-in
+const session = await client.verifyCustomerAuth({ email, code });
+// or client.signInWithAppleNative({ idToken }) / signInWithGoogleNative({ idToken })
+```
+
+Fan endpoints: `listFanEvents`, `getFanEvent`, `getFanConfig`, `listFanMembershipPlans`, `getFanMembershipStatus`, `subscribeFanMembership`, `createFanOneoffMembershipPayment`, `openFanBillingPortal`, `listFanTickets`, `getFanTicket`.
+
+Headless custom sites: after sign-in (`verifyCustomerAuth`), call `subscribeFanMembership({ planId, interval: 'month' | 'year', successUrl, cancelUrl })` for recurring plans (redirect to Stripe Checkout), or `createFanOneoffMembershipPayment({ planId, kind: 'lifetime' | 'pass' })` for one-time plans (confirm with Stripe Payment Element using returned `clientSecret` and publishable key).
+
+Starter template: `templates/kintana-mobile-starter` in the Kintana monorepo.
 
 ---
 

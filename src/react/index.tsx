@@ -1,9 +1,20 @@
 "use client";
 
 import * as React from "react";
+import type { KintanaCustomerAuthResult } from "../fan-types";
 import type { KintanaClient } from "../index";
 import { createKintanaClient } from "../index";
-import type { KintanaPublicEvent, KintanaPublicFormSchema } from "../types";
+import type { KintanaPublicEvent, KintanaPublicFormSchema, KintanaSubmitPayload } from "../types";
+import { PhoneInput } from "./PhoneInput";
+
+export { PhoneInput } from "./PhoneInput";
+export type { PhoneInputProps } from "./PhoneInput";
+export {
+  PHONE_COUNTRIES,
+  defaultDialFromCountryHint,
+  formatPhoneE164,
+  parsePhoneE164,
+} from "../phone-countries";
 
 type KintanaBridge = {
   client: KintanaClient;
@@ -225,6 +236,7 @@ function inputTypeForField(t: string): React.HTMLInputTypeAttribute {
   }
 }
 
+/** @deprecated Build your own form UI and use {@link useKintanaSubmit} or {@link KintanaClient.submitEndpoint}. */
 export function EmbedForm({
   id,
   kind,
@@ -455,6 +467,23 @@ export function EmbedForm({
             );
           }
 
+          if (f.type === "phone") {
+            return (
+              <label key={f.id} style={{ display: "grid", gap: 6, fontWeight: 500 }}>
+                <span>
+                  {f.label}
+                  {f.required ? " *" : ""}
+                </span>
+                {hint}
+                <PhoneInput
+                  name={f.id}
+                  required={Boolean(f.required)}
+                  placeholder={f.placeholder ?? "412 345 678"}
+                />
+              </label>
+            );
+          }
+
           return (
             <label key={f.id} style={{ display: "grid", gap: 6, fontWeight: 500 }}>
               <span>
@@ -523,4 +552,179 @@ export function KintanaTracker(): null {
   }, [ctx?.apiKey, ctx?.baseUrl]);
 
   return null;
+}
+
+function visitorKeyForSubmit(): string | undefined {
+  try {
+    const k = "_kvid";
+    let v = localStorage.getItem(k);
+    if (v) return v;
+    v =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(k, v);
+    return v;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Submit to a headless endpoint by slug from your own form UI. */
+export function useKintanaSubmit(slug: string) {
+  const client = useKintana();
+  const [submitting, setSubmitting] = React.useState(false);
+  const [message, setMessage] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const submit = React.useCallback(
+    async (payload: Omit<KintanaSubmitPayload, "visitorKey">) => {
+      setSubmitting(true);
+      setMessage(null);
+      setError(null);
+      try {
+        const result = await client.submitEndpoint(slug, {
+          ...payload,
+          visitorKey: visitorKeyForSubmit(),
+        });
+        if (result.redirectUrl) {
+          window.location.assign(result.redirectUrl);
+          return result;
+        }
+        setMessage(result.successMessage ?? "Submitted.");
+        return result;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Something went wrong.";
+        setError(msg);
+        throw e;
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [client, slug]
+  );
+
+  return { submit, submitting, message, error, setMessage, setError };
+}
+
+const KINTANA_AUTH_STORAGE_KEY = "kintana_access_token";
+
+type KintanaAuthContextValue = {
+  client: KintanaClient;
+  accessToken: string | null;
+  isSignedIn: boolean;
+  requestMagicLink: (email: string, redirectUrl: string) => Promise<void>;
+  verifyCode: (email: string, code: string) => Promise<KintanaCustomerAuthResult>;
+  verifyToken: (token: string) => Promise<KintanaCustomerAuthResult>;
+  signOut: () => void;
+};
+
+const KintanaAuthContext = React.createContext<KintanaAuthContextValue | null>(null);
+
+export function KintanaAuthProvider({
+  apiKey,
+  baseUrl,
+  initialAccessToken,
+  storageKey = KINTANA_AUTH_STORAGE_KEY,
+  children,
+}: {
+  apiKey: string;
+  baseUrl: string;
+  initialAccessToken?: string | null;
+  storageKey?: string;
+  children: React.ReactNode;
+}) {
+  const trimmedKey = apiKey.trim();
+  const normalizedBase = baseUrl.replace(/\/$/, "");
+
+  const [accessToken, setAccessTokenState] = React.useState<string | null>(() => {
+    if (initialAccessToken?.trim()) return initialAccessToken.trim();
+    if (typeof window === "undefined") return null;
+    try {
+      return localStorage.getItem(storageKey)?.trim() || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const client = React.useMemo(
+    () =>
+      createKintanaClient({
+        apiKey: trimmedKey,
+        baseUrl: normalizedBase,
+        accessToken: accessToken ?? undefined,
+      }),
+    [trimmedKey, normalizedBase, accessToken]
+  );
+
+  React.useEffect(() => {
+    client.setAccessToken(accessToken);
+  }, [client, accessToken]);
+
+  const persistToken = React.useCallback(
+    (token: string | null) => {
+      setAccessTokenState(token);
+      client.setAccessToken(token);
+      if (typeof window === "undefined") return;
+      try {
+        if (token) localStorage.setItem(storageKey, token);
+        else localStorage.removeItem(storageKey);
+      } catch {
+        /* ignore */
+      }
+    },
+    [client, storageKey]
+  );
+
+  const requestMagicLink = React.useCallback(
+    async (email: string, redirectUrl: string) => {
+      await client.requestCustomerMagicLink(email, { redirectUrl });
+    },
+    [client]
+  );
+
+  const verifyCode = React.useCallback(
+    async (email: string, code: string) => {
+      const res = await client.verifyCustomerAuth({ email, code });
+      if (res.accessToken) persistToken(res.accessToken);
+      return res;
+    },
+    [client, persistToken]
+  );
+
+  const verifyToken = React.useCallback(
+    async (token: string) => {
+      const res = await client.verifyCustomerAuth({ token });
+      if (res.accessToken) persistToken(res.accessToken);
+      return res;
+    },
+    [client, persistToken]
+  );
+
+  const signOut = React.useCallback(() => {
+    persistToken(null);
+  }, [persistToken]);
+
+  const value = React.useMemo(
+    () => ({
+      client,
+      accessToken,
+      isSignedIn: Boolean(accessToken),
+      requestMagicLink,
+      verifyCode,
+      verifyToken,
+      signOut,
+    }),
+    [client, accessToken, requestMagicLink, verifyCode, verifyToken, signOut]
+  );
+
+  return <KintanaAuthContext.Provider value={value}>{children}</KintanaAuthContext.Provider>;
+}
+
+export function useKintanaAuth(): KintanaAuthContextValue {
+  const ctx = React.useContext(KintanaAuthContext);
+  if (!ctx) {
+    throw new Error("Wrap your tree in <KintanaAuthProvider /> from @kintana/sdk/react.");
+  }
+  return ctx;
 }

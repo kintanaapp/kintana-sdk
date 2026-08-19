@@ -21,6 +21,7 @@ export type KintanaPublicVenue = {
   city: string | null;
   country: string | null;
   address: string | null;
+  description?: string | null;
   lat: number | null;
   lng: number | null;
   timeZone: string | null;
@@ -54,6 +55,12 @@ export type KintanaPublicEventReview = {
 
 export type KintanaPublicTour = {
   id: string;
+  slug: string;
+  name: string;
+  imageUrl?: string | null;
+};
+
+export type KintanaPublicPromoter = {
   slug: string;
   name: string;
 };
@@ -92,6 +99,8 @@ export type KintanaPublicEvent = {
   isShared?: boolean;
   /** Workspace that owns ticketing for this show. */
   hostWorkspace?: { slug: string; name: string };
+  /** Linked promoter when set on the event in Kintana. */
+  promoter?: KintanaPublicPromoter | null;
 };
 
 export type KintanaArtistResidency = "resident" | "regular" | "visiting" | "headline-guest";
@@ -119,6 +128,33 @@ export type KintanaPublicFormSummary = {
   slug: string;
   kind: string;
   title: string;
+};
+
+export type KintanaEndpointIntent =
+  | "show_request"
+  | "contact"
+  | "newsletter"
+  | "external_lead"
+  | "custom";
+
+export type KintanaEndpointSummary = {
+  slug: string;
+  intent: KintanaEndpointIntent;
+  title: string | null;
+};
+
+export type KintanaSubmitPayload = {
+  email: string;
+  phone?: string;
+  fields?: Record<string, string>;
+  context?: Record<string, string>;
+  visitorKey?: string;
+};
+
+export type KintanaSubmitResponse = {
+  ok: boolean;
+  successMessage?: string | null;
+  redirectUrl?: string | null;
 };
 
 export type KintanaEmbedFieldType =
@@ -265,13 +301,43 @@ export type KintanaPublicStoreCollectionDetail = KintanaPublicStoreCollection & 
   products: KintanaPublicStoreProduct[];
 };
 
+export type KintanaPublicFoodMenuItem = {
+  id: string;
+  name: string;
+  description: string | null;
+  allergenNote: string | null;
+  priceCents: number;
+  imageUrl: string | null;
+  available: boolean;
+};
+
+export type KintanaPublicFoodMenuCategory = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  items: KintanaPublicFoodMenuItem[];
+};
+
+/** Active venue menu for custom sites. Checkout stays on Kintana QR / show-order URLs. */
+export type KintanaPublicFoodMenu = {
+  id: string;
+  name: string;
+  currency: string;
+  categories: KintanaPublicFoodMenuCategory[];
+};
+
 export type KintanaPublicFile = {
   id: string;
   name: string;
+  /** Web-optimized URL (WebP when derivative is ready). */
   url: string;
   contentType: string;
   size: number;
   createdAt: string;
+  /** Original uploaded file URL when a WebP derivative is served from `url`. */
+  originalUrl?: string;
+  originalContentType?: string;
+  originalSize?: number;
 };
 
 export type KintanaSiteInfo = {
@@ -305,10 +371,17 @@ export type KintanaManifestFormRef = {
   kind: string;
 };
 
+export type KintanaManifestEndpointRef = {
+  slug: string;
+  intent: string;
+};
+
 export type KintanaSiteManifest = {
   site: { id: string; name: string; slug: string };
   updatedAt: string;
   gallery: KintanaGalleryItem[];
   assets: KintanaSiteAssets;
+  /** @deprecated Use `endpoints`. */
   forms: Record<string, KintanaManifestFormRef | null>;
+  endpoints: Record<string, KintanaManifestEndpointRef | null>;
 };

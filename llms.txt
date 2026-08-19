@@ -27,7 +27,12 @@ HTTP prefixes (HTTPS only in production):
 - Client helpers: `findForm({ kind, slug })`, `pickFormFromList(forms, opts)` — prefer over hard-coded form ids in env
 - `GET /api/public/v1/store/products` + `GET /api/public/v1/store/products/{idOrSlug}` (Pro store enabled; `productUrl` / `storeUrl` for checkout on Kintana)
 - `GET /api/public/v1/store/collections` + `GET /api/public/v1/store/collections/{idOrSlug}`
+- `GET /api/public/v1/food/menu` (Pro + food ordering enabled; catalog only — QR / show checkout stays on Kintana)
 - `GET /api/public/v1/files` + `GET /api/public/v1/files/{id}` (workspace files with **link** visibility only; site-bound keys may only list folders bound to that site)
+- Secret key (`kpa_secret_` + `workspace.files` scope, server-only):
+  - `POST /api/public/v1/files` — multipart upload (≤4MB), returns `{ file }` with link visibility
+  - `POST /api/public/v1/files/upload/presign` + `POST /api/public/v1/files/upload/complete` — direct-to-R2 for files up to 100MB
+  - Client: `uploadFile`, `presignFileUpload`, `completeFileUpload`, `uploadFileAuto` (requires `secretApiKey` on `createKintanaClient`)
 - Site-bound custom site (requires credential linked to a Custom site row):
   - `GET /api/public/v1/site`
   - `GET /api/public/v1/site/gallery` — ordered items with alt/caption
@@ -39,7 +44,7 @@ Exports:
 
 - `@kintana/sdk/locations` ships `groupVenuesByCity()` for `/locations` nav without a bespoke API.
 
-Tracker script (`/_t/k.js`) emits `CustomEvent` hooks: `kintana:pageview`, `kintana:event_view`, `kintana:ticket_click`, `kintana:form_submit` (detail mirrors ingest props).
+Tracker script (`/_t/k.js`) — **install on every custom/external layout**. Technically optional for server-only REST, but without it: no Kintana Analytics for your domain, no form/widget hydration, no ticket-click attribution. Emits `CustomEvent` hooks: `kintana:pageview`, `kintana:event_view`, `kintana:ticket_click`, `kintana:form_submit` (detail mirrors ingest props).
 
 Out of scope until explicitly launched: generic marketing `pages` CMS, `/stats` KPI aggregates, RRULE recurrence resources, richer embed-field types (`file`, selects, branching logic)—document that integrators keep MDX in their repo for prose.
 
@@ -50,6 +55,6 @@ Starter repos (copy/paste onboarding):
 
 Companion script (`/_t/k.js`) for visitor analytics + hydrating `[data-kintana-form]` / `[data-kintana-widget="event:EVENT_ID"]` (loads `/embed/event/{id}` with full Stripe checkout in an iframe).
 
-- Not required if integrators **only** use `createKintanaClient` server-side for REST — required if they use those DOM markers or want ingest CustomEvents / ticket-click hooks.
+- **Recommended on every layout.** Server-only REST works without it, but you lose Kintana-side traffic analytics, embedded forms/widgets, and ticket-click events.
 - Paste once per layout; snippet lives under **Business → Websites → Custom site**. For custom developer sites, **`data-token` is the Public key** (`kpa_live_…`) — same env var as REST calls. Never put the Secret key in `data-token`. External-site setup may still mint a short-lived JWT when JWT is configured; custom site credentials always use the Public key.
 - HTML shape: `<script async src="{baseUrl}/_t/k.js" data-token="…" data-api-base="{baseUrl}">`
