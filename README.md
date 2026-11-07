@@ -80,6 +80,8 @@ Loads website-visible shows for the workspace tied to your API key — **owned s
 
 Each event includes `isShared` (true when another workspace owns ticketing) and `hostWorkspace` (`slug`, `name`). `ticketUrl` always points at the host’s checkout page on Kintana.
 
+`metaPixelIds` lists the Meta pixels that belong on that show's page: the organiser's, plus pixels from collaborators and acts on the lineup (set in Kintana under Settings → Ads → Pixels). If you build your own show pages, load them after the visitor allows ad cookies and send events with `fbq('trackSingle', id, …)` so each pixel only hears about its own shows.
+
 ```ts
 // All upcoming shows you own or appear on
 await client.listEvents({ limit: 12 });
@@ -137,7 +139,18 @@ await client.submitEndpoint("contact", {
 });
 ```
 
-For **show request** endpoints, `city` and `country` must appear in `fields` or `context`. Responses include `{ ok: true, successMessage, redirectUrl }`.
+For **show request** endpoints, `city` and `country` must appear in `fields` or `context`. Responses include `{ ok: true, successMessage, redirectUrl, bookingRequestId? }`.
+
+**Group booking** endpoints (`GROUP_BOOKING` kind) create an approval queue entry in Kintana admin. Use `submitBookingRequest(slug, payload)` — same shape as `submitEndpoint`. Manage requests server-side with a secret key (`workspace.booking_requests` scope):
+
+```ts
+const pending = await client.listBookingRequests({ status: "PENDING" });
+await client.updateBookingRequest(pending[0].id, {
+  status: "DECLINED",
+  alternateDates: "Wed 12 Aug, Thu 13 Aug",
+  sendEmail: true,
+});
+```
 
 Provision endpoints in Kintana → Marketing → Submission endpoints, or run `npm run setup:endpoints` in your site repo.
 
@@ -237,6 +250,44 @@ Collection summaries include `productCount` and `collectionUrl`. Detail response
 
 Returns `404` when the workspace is not on Pro, store is disabled, or the slug is unknown.
 
+### Gift cards and vouchers (workspaces with the gift card shop on)
+
+Sell gift cards and vouchers on your own site. Fans spend them on tickets by entering the code at Kintana checkout; door vouchers are scanned at the door.
+
+#### `await client.listGiftCardProducts()`
+
+`{ products, shopUrl }`. Each product has `kind` (`GIFT_CARD` or `VOUCHER`), `currency`, and either `amountOptionsCents` / `allowCustomAmount` with `minCustomCents`–`maxCustomCents` (gift cards) or `priceCents` with `ticketCount` or `itemLabel` (vouchers). `shopUrl` is Kintana's hosted shop if you'd rather link out. Returns `404` when the gift card shop is off.
+
+#### `await client.purchaseGiftCard({ productId, amountCents?, purchaserName, purchaserEmail, recipientName?, recipientEmail?, message?, deliverAt? })`
+
+Starts the sale and returns `{ clientSecret, stripeConnectAccountId, stripePublishableKey, giftCardToken, giftPageUrl, amountCents, currency }`. Confirm the payment with Stripe.js; the card turns on and is emailed (to the recipient, or the buyer when there's none, on `deliverAt` if set) once it's paid.
+
+```ts
+import { loadStripe } from "@stripe/stripe-js";
+
+const sale = await client.purchaseGiftCard({
+  productId,
+  amountCents: 5000,
+  purchaserName: "Sam",
+  purchaserEmail: "sam@example.com",
+  recipientEmail: "alex@example.com",
+  message: "Happy birthday!",
+});
+const stripe = await loadStripe(sale.stripePublishableKey!, {
+  stripeAccount: sale.stripeConnectAccountId ?? undefined,
+});
+// Mount a Payment Element with sale.clientSecret, then:
+await stripe!.confirmPayment({ elements, confirmParams: { return_url: sale.giftPageUrl } });
+```
+
+#### `await client.getGiftCard(token)`
+
+The card from `giftCardToken`: `status` (`PENDING` until paid, then `ACTIVE`, `USED` or `VOID`), `balanceCents`, `remainingTickets`, `expiresAt`, `usable`, and `code` once paid. Poll it after payment to show the code on your own page.
+
+#### `await client.checkGiftCardBalance(code)`
+
+What's left on a code: the same fields without `code`, plus `availableCents` / `availableTickets` net of unpaid checkouts. Rate limited (about 12 tries per 10 minutes per visitor); `404` for an unknown code.
+
 ### Food menu (Pro workspaces with food ordering enabled)
 
 Headless dining catalog: list categories and items on your site. Guests order from Kintana’s hosted QR table or show-night pages.
@@ -334,6 +385,35 @@ The async loader at `{baseUrl}/_t/k.js` records first-party hits and dispatches 
 | `kintana:form_submit` | After embedded `[data-kintana-form]` POST succeeds |
 
 `window.addEventListener("kintana:pageview", (ev) => { console.log(ev.detail); })`.
+
+### Cookie banner, consent and show pixels
+
+On pages with a `[data-kintana-widget]` checkout, the tracker script handles ad cookies for you:
+
+- **Show pixels on your page.** It loads the show's Meta pixels (organiser, collaborators, lineup acts) and sends PageView and ViewContent to each with `trackSingle`. The checkout iframe then only sends InitiateCheckout and Purchase. Add `data-kintana-page-events="iframe"` to a widget to have the iframe send them instead.
+- **Cookie banner.** It follows the workspace's setting in Kintana (Settings → Ads → Pixels → Cookie banner):
+  - *Off* (default): no banner, and pixels run.
+  - *Follow the rules by region*: EU, EEA, UK and Switzerland must opt in first. The US gets a notice with an opt-out, and Global Privacy Control counts as opting out. No banner elsewhere.
+  - *Ask everyone first*
+- **Your own banner instead.** Tell the script what the visitor chose, and its banner stays hidden:
+
+```html
+<script>window.kintanaConsent = "wait";</script> <!-- before the tracker: hold pixels until you know -->
+<script>
+  // From your cookie banner, whenever the visitor chooses:
+  window.Kintana?.setConsent("granted"); // or "denied"
+  // or, with the SDK: import { setKintanaConsent } from "@kintana/sdk"; setKintanaConsent("granted");
+</script>
+```
+
+| Value | Effect |
+| --- | --- |
+| `granted` | Pixels fire. Collaborators' pixels get the server-side Purchase |
+| `denied` | No pixels. Only the organiser gets the server-side Purchase, sent with Meta's limited data use |
+| `wait` | Nothing fires until a choice arrives |
+| `host` | Your site handles consent itself, and pixels fire |
+
+`data-kintana-consent="…"` on a single widget overrides the value for that checkout. The page also gets a `kintana:consent` event (`detail.ads`) whenever the value changes.
 
 ### Deferred product surface (tell clients explicitly)
 
@@ -494,9 +574,9 @@ const session = await client.verifyCustomerAuth({ email, code });
 // or client.signInWithAppleNative({ idToken }) / signInWithGoogleNative({ idToken })
 ```
 
-Fan endpoints: `listFanEvents`, `getFanEvent`, `getFanConfig`, `listFanMembershipPlans`, `getFanMembershipStatus`, `subscribeFanMembership`, `createFanOneoffMembershipPayment`, `openFanBillingPortal`, `listFanTickets`, `getFanTicket`.
+Fan endpoints: `listFanEvents`, `getFanEvent`, `getFanConfig`, `listFanMembershipPlans`, `getFanMembershipStatus`, `redeemFanMembershipCode`, `subscribeFanMembership`, `createFanOneoffMembershipPayment`, `openFanBillingPortal`, `cancelFanMembership`, `resumeFanMembership`, `startFanMembershipPaymentMethodUpdate`, `confirmFanMembershipPaymentMethod`, `listFanTickets`, `getFanTicket`.
 
-Headless custom sites: after sign-in (`verifyCustomerAuth`), call `subscribeFanMembership({ planId, interval: 'month' | 'year', successUrl, cancelUrl })` for recurring plans (redirect to Stripe Checkout), or `createFanOneoffMembershipPayment({ planId, kind: 'lifetime' | 'pass' })` for one-time plans (confirm with Stripe Payment Element using returned `clientSecret` and publishable key).
+Headless custom sites: after sign-in (`verifyCustomerAuth`), call `subscribeFanMembership({ planId, interval: 'month' | 'year' })` for recurring plans (confirm with Stripe Payment Element using returned `clientSecret` and publishable key), or `createFanOneoffMembershipPayment({ planId, kind: 'lifetime' | 'pass' })` for one-time plans (same Payment Element flow).
 
 Starter template: `templates/kintana-mobile-starter` in the Kintana monorepo.
 

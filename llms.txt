@@ -18,7 +18,7 @@ HTTP prefixes (HTTPS only in production):
 - `GET /api/public/v1/events?limit=N&tourId=&artistSlug=&venueSlug=&promoterSlug=&scope=all|owned|shared&involvement=lineup|venue|promoter|collaborator|tour&myLineup=true&from=&to=&status=` (status ∈ `on-sale|sold-out|past|cancelled|postponed|…`)
 - `GET /api/public/v1/events/{idOrSlug}` — resolves owned **or** shared shows visible to the key workspace
 
-**Shared events:** By default, list/get includes shows the key workspace owns plus shows it is involved in (event/tour collaborator, linked venue/promoter, or lineup artist linked to the workspace). Use `scope=owned|shared` and `involvement=` to filter. Responses include `isShared` and `hostWorkspace`; `ticketUrl` points at the owning workspace’s checkout.
+**Shared events:** By default, list/get includes shows the key workspace owns plus shows it is involved in (event/tour collaborator, linked venue/promoter, or lineup artist linked to the workspace). Use `scope=owned|shared` and `involvement=` to filter. Responses include `isShared` and `hostWorkspace`; `ticketUrl` points at the owning workspace’s checkout. `metaPixelIds` lists the Meta pixels to load (after ad-cookie consent) on that show's pages. On pages with checkout widgets, the tracker loads the show's pixels on the page and shows the workspace's cookie banner (rules by region, ask everyone, or off); a site with its own banner sets `window.kintanaConsent` / `Kintana.setConsent("granted"|"denied"|"wait"|"host")` instead.
 - `GET /api/public/v1/artists` + `GET /api/public/v1/artists/{idOrSlug}` (embeds `socials`, `reels`, `upcomingEvents[]`)
 - `GET /api/public/v1/venues` + `GET /api/public/v1/venues/{idOrSlug}` (every venue has a `slug`, detail returns `upcomingEvents[]`)
 - `GET /api/public/v1/forms`
@@ -27,6 +27,7 @@ HTTP prefixes (HTTPS only in production):
 - Client helpers: `findForm({ kind, slug })`, `pickFormFromList(forms, opts)` — prefer over hard-coded form ids in env
 - `GET /api/public/v1/store/products` + `GET /api/public/v1/store/products/{idOrSlug}` (Pro store enabled; `productUrl` / `storeUrl` for checkout on Kintana)
 - `GET /api/public/v1/store/collections` + `GET /api/public/v1/store/collections/{idOrSlug}`
+- `GET /api/public/v1/gift-cards` (gift card shop on; `{ products, shopUrl }`) · `POST /api/public/v1/gift-cards/purchase` (Stripe client secret to confirm) · `GET /api/public/v1/gift-cards/{token}` (card, code once paid) · `POST /api/public/v1/gift-cards/balance` `{ code }` (rate limited)
 - `GET /api/public/v1/food/menu` (Pro + food ordering enabled; catalog only — QR / show checkout stays on Kintana)
 - `GET /api/public/v1/files` + `GET /api/public/v1/files/{id}` (workspace files with **link** visibility only; site-bound keys may only list folders bound to that site)
 - Secret key (`kpa_secret_` + `workspace.files` scope, server-only):

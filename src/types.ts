@@ -29,9 +29,18 @@ export type KintanaPublicVenue = {
   wheelchairAccessible?: boolean | null;
 };
 
+/** A room or space inside a venue. `capacity` is null when it isn't set. */
+export type KintanaPublicVenueRoom = {
+  id: string;
+  name: string;
+  capacity: number | null;
+};
+
 export type KintanaPublicVenueListed = KintanaPublicVenue & {
   capacity: number;
   imageUrl: string | null;
+  /** Rooms inside the venue, main room first. Empty when the venue is one room. */
+  rooms?: KintanaPublicVenueRoom[];
 };
 
 export type KintanaPublicVenueDetail = KintanaPublicVenueListed & {
@@ -65,6 +74,13 @@ export type KintanaPublicPromoter = {
   name: string;
 };
 
+export type KintanaPublicGoldMembership = {
+  status: "eligible" | "exempt";
+  planName: string;
+  /** Free tickets per order when eligible, when configured on the plan. */
+  freeTickets?: number;
+};
+
 export type KintanaPublicEvent = {
   id: string;
   slug: string;
@@ -75,6 +91,11 @@ export type KintanaPublicEvent = {
   imageUrl: string | null;
   ticketUrl: string;
   embedUrl: string;
+  /**
+   * Meta pixel ids that should fire on this show's pages: the organiser's, plus collaborators' and lineup
+   * acts' (minus any the organiser switched off). Load them only after the visitor allows ad cookies.
+   */
+  metaPixelIds?: string[];
   doorsOpen: string | null;
   showTime: string | null;
   description: string | null;
@@ -101,6 +122,8 @@ export type KintanaPublicEvent = {
   hostWorkspace?: { slug: string; name: string };
   /** Linked promoter when set on the event in Kintana. */
   promoter?: KintanaPublicPromoter | null;
+  /** Gold membership eligibility when memberships are enabled for the host workspace. */
+  goldMembership?: KintanaPublicGoldMembership;
 };
 
 export type KintanaArtistResidency = "resident" | "regular" | "visiting" | "headline-guest";
@@ -135,6 +158,7 @@ export type KintanaEndpointIntent =
   | "contact"
   | "newsletter"
   | "external_lead"
+  | "group_booking"
   | "custom";
 
 export type KintanaEndpointSummary = {
@@ -155,6 +179,43 @@ export type KintanaSubmitResponse = {
   ok: boolean;
   successMessage?: string | null;
   redirectUrl?: string | null;
+  bookingRequestId?: string;
+};
+
+export type KintanaBookingRequestStatus = "PENDING" | "APPROVED" | "DECLINED" | "CANCELLED";
+
+export type KintanaBookingRequest = {
+  id: string;
+  status: KintanaBookingRequestStatus;
+  outcomeType: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string | null;
+  companyName: string | null;
+  headcount: number | null;
+  preferredShowLabel: string | null;
+  preferredDates: string | null;
+  notes: string | null;
+  preferredEventId: string | null;
+  preferredEvent: { id: string; name: string; slug: string; date: string } | null;
+  declineReason: string | null;
+  alternateDates: string | null;
+  internalNotes: string | null;
+  invoiceId: string | null;
+  orderId: string | null;
+  paymentUrl: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  fieldsJson: Record<string, unknown> | null;
+};
+
+export type KintanaUpdateBookingRequestInput = {
+  status?: KintanaBookingRequestStatus;
+  declineReason?: string | null;
+  alternateDates?: string | null;
+  internalNotes?: string | null;
+  sendEmail?: boolean;
 };
 
 export type KintanaEmbedFieldType =
@@ -384,4 +445,94 @@ export type KintanaSiteManifest = {
   /** @deprecated Use `endpoints`. */
   forms: Record<string, KintanaManifestFormRef | null>;
   endpoints: Record<string, KintanaManifestEndpointRef | null>;
+};
+
+/** A gift card or voucher on sale (`listGiftCardProducts`). Amounts are minor units. */
+export type KintanaPublicGiftCardProduct = {
+  id: string;
+  /** GIFT_CARD holds money for tickets; VOUCHER is a set number of tickets or one item at the door. */
+  kind: "GIFT_CARD" | "VOUCHER";
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  currency: string;
+  /** Gift card: amounts to pick from. */
+  amountOptionsCents: number[];
+  /** Gift card: buyer may enter their own amount between min and max. */
+  allowCustomAmount: boolean;
+  minCustomCents: number | null;
+  maxCustomCents: number | null;
+  /** Voucher: what it costs. */
+  priceCents: number | null;
+  /** Voucher: TICKETS (spent at checkout) or ITEM (scanned at the door). */
+  redeemType: "TICKETS" | "ITEM" | null;
+  /** Ticket voucher: tickets it covers. */
+  ticketCount: number | null;
+  /** Door voucher: what staff hand over, e.g. "Two drinks". */
+  itemLabel: string | null;
+  /** Months from purchase until it expires; null = never. */
+  validMonths: number | null;
+};
+
+export type KintanaGiftCardShop = {
+  products: KintanaPublicGiftCardProduct[];
+  /** Kintana's hosted gift card shop for this workspace. */
+  shopUrl: string;
+};
+
+export type KintanaGiftCardPurchaseInput = {
+  productId: string;
+  /** Gift card amount in minor units: one of `amountOptionsCents`, or a custom amount when allowed. Ignored for vouchers. */
+  amountCents?: number | null;
+  purchaserName: string;
+  purchaserEmail: string;
+  /** Leave out to buy it for yourself (it's emailed to the purchaser). */
+  recipientName?: string | null;
+  recipientEmail?: string | null;
+  message?: string | null;
+  /** ISO date or date-time to email the gift on; omitted = straight after payment. */
+  deliverAt?: string | null;
+};
+
+/** Confirm `clientSecret` with Stripe.js (`stripeAccount: stripeConnectAccountId` when set). */
+export type KintanaGiftCardPurchase = {
+  /** Token for `getGiftCard`; also the end of `giftPageUrl`. */
+  giftCardToken: string;
+  /** Hosted gift page: code, balance, door QR. A good Stripe `return_url`. */
+  giftPageUrl: string;
+  amountCents: number;
+  currency: string;
+  clientSecret: string | null;
+  stripeConnectAccountId: string | null;
+  stripePublishableKey: string | null;
+};
+
+export type KintanaGiftCard = {
+  token: string;
+  kind: "GIFT_CARD" | "VOUCHER";
+  redeemType: "TICKETS" | "ITEM" | null;
+  name: string;
+  itemLabel: string | null;
+  /** PENDING until paid, then ACTIVE; USED when spent; VOID when cancelled. */
+  status: "PENDING" | "ACTIVE" | "USED" | "VOID";
+  expired: boolean;
+  /** Can be spent right now. */
+  usable: boolean;
+  currency: string;
+  initialValueCents: number;
+  balanceCents: number;
+  initialTickets: number;
+  remainingTickets: number;
+  expiresAt: string | null;
+  recipientName: string | null;
+  message: string | null;
+  /** XXXX-XXXX-XXXX, entered at checkout. Null until paid, and never returned by `checkGiftCardBalance`. */
+  code: string | null;
+  giftPageUrl: string;
+};
+
+/** `checkGiftCardBalance` result: amounts net of unpaid checkouts currently holding value. */
+export type KintanaGiftCardBalance = KintanaGiftCard & {
+  availableCents: number;
+  availableTickets: number;
 };

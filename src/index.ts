@@ -18,6 +18,9 @@ import type {
   KintanaEndpointIntent,
   KintanaSubmitPayload,
   KintanaSubmitResponse,
+  KintanaBookingRequest,
+  KintanaBookingRequestStatus,
+  KintanaUpdateBookingRequestInput,
   KintanaManifestEndpointRef,
   KintanaGalleryItem,
   KintanaSiteAssetSlot,
@@ -35,6 +38,12 @@ import type {
   KintanaPublicVenueListed,
   KintanaUpdateEmbedFormInput,
   KintanaWorkspaceContactCustomField,
+  KintanaPublicGiftCardProduct,
+  KintanaGiftCardShop,
+  KintanaGiftCardPurchaseInput,
+  KintanaGiftCardPurchase,
+  KintanaGiftCard,
+  KintanaGiftCardBalance,
 } from "./types";
 import type { KintanaGroupedCity } from "./locations";
 import { groupVenuesByCity as groupVenuesByCityImpl } from "./locations";
@@ -48,8 +57,13 @@ import type {
   KintanaFanTicket,
   KintanaFanAccountProfile,
   KintanaFanBillingPortalResult,
+  KintanaFanMembershipCancelResult,
+  KintanaFanPaymentMethodSession,
   KintanaFanMembershipSubscribeResult,
   KintanaFanOneoffMembershipPayment,
+  KintanaFanCreditTransfer,
+  KintanaFanCreditTransferResult,
+  KintanaFanMembershipRedeemResult,
 } from "./fan-types";
 
 export type {
@@ -70,6 +84,9 @@ export type {
   KintanaEndpointIntent,
   KintanaSubmitPayload,
   KintanaSubmitResponse,
+  KintanaBookingRequest,
+  KintanaBookingRequestStatus,
+  KintanaUpdateBookingRequestInput,
   KintanaManifestEndpointRef,
   KintanaGalleryItem,
   KintanaSiteAssetSlot,
@@ -84,11 +101,18 @@ export type {
   KintanaPublicFoodMenuCategory,
   KintanaPublicFoodMenuItem,
   KintanaPublicVenueListed,
+  KintanaPublicVenueRoom,
   KintanaPublicVenueDetail,
   KintanaPublicArtistEmbed,
   KintanaPublicArtistDetail,
   KintanaUpdateEmbedFormInput,
   KintanaWorkspaceContactCustomField,
+  KintanaPublicGiftCardProduct,
+  KintanaGiftCardShop,
+  KintanaGiftCardPurchaseInput,
+  KintanaGiftCardPurchase,
+  KintanaGiftCard,
+  KintanaGiftCardBalance,
 } from "./types";
 export { groupVenuesByCityImpl as groupVenuesByCity };
 export type { KintanaGroupedCity } from "./locations";
@@ -105,8 +129,13 @@ export type {
   KintanaFanTicket,
   KintanaFanAccountProfile,
   KintanaFanBillingPortalResult,
+  KintanaFanMembershipCancelResult,
+  KintanaFanPaymentMethodSession,
   KintanaFanMembershipSubscribeResult,
   KintanaFanOneoffMembershipPayment,
+  KintanaFanCreditTransfer,
+  KintanaFanCreditTransferResult,
+  KintanaFanMembershipRedeemResult,
 } from "./fan-types";
 
 export type KintanaClientOptions = {
@@ -171,6 +200,17 @@ export type KintanaClient = {
   listEndpoints(): Promise<KintanaEndpointSummary[]>;
   /** Submit to a headless endpoint by slug. Email is required; other fields are developer-defined. */
   submitEndpoint(slug: string, payload: KintanaSubmitPayload): Promise<KintanaSubmitResponse>;
+  /** Alias for {@link submitEndpoint} on a `GROUP_BOOKING` endpoint slug. */
+  submitBookingRequest(slug: string, payload: KintanaSubmitPayload): Promise<KintanaSubmitResponse>;
+  /** List group booking requests (secret key + `workspace.booking_requests`). */
+  listBookingRequests(opts?: {
+    status?: KintanaBookingRequestStatus;
+  }): Promise<KintanaBookingRequest[]>;
+  getBookingRequest(id: string): Promise<KintanaBookingRequest>;
+  updateBookingRequest(
+    id: string,
+    patch: KintanaUpdateBookingRequestInput
+  ): Promise<KintanaBookingRequest>;
   /** @deprecated Use {@link submitEndpoint} with a show_request endpoint slug. */
   listForms(): Promise<KintanaPublicFormSummary[]>;
   /** @deprecated Use {@link listEndpoints} and submit by slug. */
@@ -207,6 +247,14 @@ export type KintanaClient = {
   getStoreProduct(idOrSlug: string): Promise<KintanaPublicStoreProductDetail>;
   listStoreCollections(opts?: { limit?: number }): Promise<KintanaPublicStoreCollection[]>;
   getStoreCollection(idOrSlug: string): Promise<KintanaPublicStoreCollectionDetail>;
+  /** Gift cards and vouchers on sale, plus the hosted shop URL. 404 when the gift card shop is off. */
+  listGiftCardProducts(): Promise<KintanaGiftCardShop>;
+  /** Start buying a gift card or voucher; confirm the returned `clientSecret` with Stripe.js. */
+  purchaseGiftCard(input: KintanaGiftCardPurchaseInput): Promise<KintanaGiftCardPurchase>;
+  /** A gift card by its token (from `purchaseGiftCard` or the `/g/{token}` link), with its code once paid. */
+  getGiftCard(token: string): Promise<KintanaGiftCard>;
+  /** What's left on a code. Rate limited per visitor (about 12 tries per 10 minutes). */
+  checkGiftCardBalance(code: string): Promise<KintanaGiftCardBalance>;
   getFoodMenu(): Promise<KintanaPublicFoodMenu>;
   listFiles(opts?: { limit?: number; folderId?: string | null }): Promise<KintanaPublicFile[]>;
   getFile(id: string): Promise<KintanaPublicFile>;
@@ -248,6 +296,13 @@ export type KintanaClient = {
   getFanConfig(): Promise<KintanaFanConfig>;
   listFanMembershipPlans(): Promise<KintanaFanMembershipPlan[]>;
   getFanMembershipStatus(): Promise<KintanaFanMembershipStatus>;
+  redeemFanMembershipCode(opts: { code: string }): Promise<KintanaFanMembershipRedeemResult>;
+  transferFanMembershipCredits(opts: {
+    amountCents: number;
+    toEmail: string;
+    fromMembershipId?: string;
+  }): Promise<KintanaFanCreditTransferResult>;
+  listFanMembershipCreditTransfers(): Promise<KintanaFanCreditTransfer[]>;
   listFanTickets(): Promise<KintanaFanTicket[]>;
   getFanTicket(orderId: string): Promise<KintanaFanTicket>;
   /** Headless sign-in: send magic link + code email (requires redirectUrl to your verify page). */
@@ -268,16 +323,28 @@ export type KintanaClient = {
     phone?: string | null;
   }): Promise<KintanaFanAccountProfile>;
   openFanBillingPortal(opts: { returnUrl: string }): Promise<KintanaFanBillingPortalResult>;
+  cancelFanMembership(opts?: {
+    cancelAtPeriodEnd?: boolean;
+  }): Promise<KintanaFanMembershipCancelResult>;
+  resumeFanMembership(): Promise<KintanaFanMembershipCancelResult>;
+  startFanMembershipPaymentMethodUpdate(): Promise<KintanaFanPaymentMethodSession>;
+  confirmFanMembershipPaymentMethod(opts: { setupIntentId: string }): Promise<{ ok: true }>;
   subscribeFanMembership(opts: {
     planId: string;
     interval: "month" | "year";
-    successUrl: string;
-    cancelUrl: string;
+    affiliateLinkId?: string | null;
+    /** @deprecated Unused — recurring join uses Payment Element; kept for call-site compatibility. */
+    successUrl?: string;
+    /** @deprecated Unused — recurring join uses Payment Element; kept for call-site compatibility. */
+    cancelUrl?: string;
   }): Promise<KintanaFanMembershipSubscribeResult>;
   createFanOneoffMembershipPayment(opts: {
     planId: string;
     kind: "lifetime" | "pass";
+    affiliateLinkId?: string | null;
   }): Promise<KintanaFanOneoffMembershipPayment>;
+  /** Resolve a whitelabel `?ref=` code to an affiliate link id (records a click). */
+  resolveAffiliateRef(code: string): Promise<{ linkId: string | null; refCode?: string | null }>;
   signInWithAppleNative(body: {
     idToken: string;
     nonce?: string;
@@ -327,6 +394,10 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
 
   function requireSecretFilesBearer(): string {
     return requireSecretBearer("workspace.files");
+  }
+
+  function requireSecretBookingRequestsBearer(): string {
+    return requireSecretBearer("workspace.booking_requests");
   }
 
   const MULTIPART_FILE_MAX_BYTES = 4 * 1024 * 1024;
@@ -519,6 +590,68 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
       });
     },
 
+    async submitBookingRequest(
+      slug: string,
+      payload: KintanaSubmitPayload
+    ): Promise<KintanaSubmitResponse> {
+      const encoded = encodeURIComponent(slug.trim());
+      const body: Record<string, unknown> = {
+        email: payload.email,
+        ...(payload.phone ? { phone: payload.phone } : {}),
+        ...(payload.fields ? { fields: payload.fields } : {}),
+        ...(payload.context ? { context: payload.context } : {}),
+        ...(payload.visitorKey ? { visitorKey: payload.visitorKey } : {}),
+      };
+      return requestJson<KintanaSubmitResponse>(`/api/public/v1/endpoints/${encoded}/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    },
+
+    async listBookingRequests(opts?: {
+      status?: KintanaBookingRequestStatus;
+    }): Promise<KintanaBookingRequest[]> {
+      const q = opts?.status ? `?status=${encodeURIComponent(opts.status)}` : "";
+      const data = await requestJson<{ bookingRequests?: KintanaBookingRequest[] }>(
+        `/api/public/v1/booking-requests${q}`,
+        {},
+        requireSecretBookingRequestsBearer()
+      );
+      return data.bookingRequests ?? [];
+    },
+
+    async getBookingRequest(id: string): Promise<KintanaBookingRequest> {
+      const data = await requestJson<{ bookingRequest?: KintanaBookingRequest }>(
+        `/api/public/v1/booking-requests/${encodeURIComponent(id.trim())}`,
+        {},
+        requireSecretBookingRequestsBearer()
+      );
+      if (!data.bookingRequest) {
+        throw new KintanaApiError("Booking request not found", 404, "");
+      }
+      return data.bookingRequest;
+    },
+
+    async updateBookingRequest(
+      id: string,
+      patch: KintanaUpdateBookingRequestInput
+    ): Promise<KintanaBookingRequest> {
+      const data = await requestJson<{ bookingRequest?: KintanaBookingRequest }>(
+        `/api/public/v1/booking-requests/${encodeURIComponent(id.trim())}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        },
+        requireSecretBookingRequestsBearer()
+      );
+      if (!data.bookingRequest) {
+        throw new KintanaApiError("Booking request not found", 404, "");
+      }
+      return data.bookingRequest;
+    },
+
     async listForms(): Promise<KintanaPublicFormSummary[]> {
       const data = await requestJson<{ forms?: KintanaPublicFormSummary[] }>(`/api/public/v1/forms`);
       return data.forms ?? [];
@@ -684,6 +817,41 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
         );
       }
       return data.collection;
+    },
+
+    async listGiftCardProducts(): Promise<KintanaGiftCardShop> {
+      const data = await requestJson<Partial<KintanaGiftCardShop>>(`/api/public/v1/gift-cards`);
+      return { products: data.products ?? [], shopUrl: data.shopUrl ?? "" };
+    },
+
+    async purchaseGiftCard(input: KintanaGiftCardPurchaseInput): Promise<KintanaGiftCardPurchase> {
+      return requestJson<KintanaGiftCardPurchase>(`/api/public/v1/gift-cards/purchase`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+    },
+
+    async getGiftCard(token: string): Promise<KintanaGiftCard> {
+      const data = await requestJson<{ giftCard?: KintanaGiftCard }>(
+        `/api/public/v1/gift-cards/${encodeURIComponent(token.trim())}`
+      );
+      if (!data.giftCard) {
+        throw new KintanaApiError("Malformed response from Kintana API (missing giftCard)", 500, "");
+      }
+      return data.giftCard;
+    },
+
+    async checkGiftCardBalance(code: string): Promise<KintanaGiftCardBalance> {
+      const data = await requestJson<{ giftCard?: KintanaGiftCardBalance }>(`/api/public/v1/gift-cards/balance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.trim() }),
+      });
+      if (!data.giftCard) {
+        throw new KintanaApiError("Malformed response from Kintana API (missing giftCard)", 500, "");
+      }
+      return data.giftCard;
     },
 
     async getFoodMenu(): Promise<KintanaPublicFoodMenu> {
@@ -900,6 +1068,84 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
       });
     },
 
+    async redeemFanMembershipCode(opts: {
+      code: string;
+    }): Promise<KintanaFanMembershipRedeemResult> {
+      const data = await fanRequestJson<{
+        kind?: "membership" | "credits";
+        extended?: boolean;
+        membership?: {
+          id: string;
+          planId: string;
+          planName: string;
+          endsAt: string | null;
+        };
+        amountCents?: number;
+        newBalanceCents?: number;
+        currency?: string;
+      }>(`/api/fan/v1/membership/redeem-code`, {
+        method: "POST",
+        requireAuth: true,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: opts.code }),
+      });
+      if (data.kind === "credits") {
+        if (
+          typeof data.amountCents !== "number" ||
+          typeof data.newBalanceCents !== "number" ||
+          !data.currency
+        ) {
+          throw new KintanaApiError("Malformed response from Kintana Fan API (missing credits)", 500, "");
+        }
+        return {
+          kind: "credits",
+          amountCents: data.amountCents,
+          newBalanceCents: data.newBalanceCents,
+          currency: data.currency,
+        };
+      }
+      if (!data.membership) {
+        throw new KintanaApiError("Malformed response from Kintana Fan API (missing membership)", 500, "");
+      }
+      return {
+        kind: "membership",
+        extended: Boolean(data.extended),
+        membership: data.membership,
+      };
+    },
+
+    async transferFanMembershipCredits(opts: {
+      amountCents: number;
+      toEmail: string;
+      fromMembershipId?: string;
+    }): Promise<KintanaFanCreditTransferResult> {
+      const data = await fanRequestJson<{ transfer?: KintanaFanCreditTransferResult }>(
+        `/api/fan/v1/membership/credits/transfer`,
+        {
+          method: "POST",
+          requireAuth: true,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amountCents: opts.amountCents,
+            toEmail: opts.toEmail,
+            ...(opts.fromMembershipId ? { fromMembershipId: opts.fromMembershipId } : {}),
+          }),
+        }
+      );
+      if (!data.transfer) {
+        throw new KintanaApiError("Malformed response from Kintana Fan API (missing transfer)", 500, "");
+      }
+      return data.transfer;
+    },
+
+    async listFanMembershipCreditTransfers(): Promise<KintanaFanCreditTransfer[]> {
+      const data = await fanRequestJson<{ transfers?: KintanaFanCreditTransfer[] }>(
+        `/api/fan/v1/membership/credits/transfers`,
+        { requireAuth: true }
+      );
+      return data.transfers ?? [];
+    },
+
     async listFanTickets(): Promise<KintanaFanTicket[]> {
       const data = await fanRequestJson<{ tickets?: KintanaFanTicket[] }>(`/api/fan/v1/tickets`, {
         requireAuth: true,
@@ -990,11 +1236,54 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
       });
     },
 
+    async cancelFanMembership(opts?: {
+      cancelAtPeriodEnd?: boolean;
+    }): Promise<KintanaFanMembershipCancelResult> {
+      return fanRequestJson<KintanaFanMembershipCancelResult>(`/api/fan/v1/membership/cancel`, {
+        method: "POST",
+        requireAuth: true,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cancelAtPeriodEnd: opts?.cancelAtPeriodEnd !== false,
+        }),
+      });
+    },
+
+    async resumeFanMembership(): Promise<KintanaFanMembershipCancelResult> {
+      return fanRequestJson<KintanaFanMembershipCancelResult>(`/api/fan/v1/membership/resume`, {
+        method: "POST",
+        requireAuth: true,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+    },
+
+    async startFanMembershipPaymentMethodUpdate(): Promise<KintanaFanPaymentMethodSession> {
+      return fanRequestJson<KintanaFanPaymentMethodSession>(`/api/fan/v1/membership/payment-method`, {
+        method: "POST",
+        requireAuth: true,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+    },
+
+    async confirmFanMembershipPaymentMethod(opts: {
+      setupIntentId: string;
+    }): Promise<{ ok: true }> {
+      return fanRequestJson<{ ok: true }>(`/api/fan/v1/membership/payment-method`, {
+        method: "POST",
+        requireAuth: true,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ setupIntentId: opts.setupIntentId }),
+      });
+    },
+
     async subscribeFanMembership(opts: {
       planId: string;
       interval: "month" | "year";
-      successUrl: string;
-      cancelUrl: string;
+      affiliateLinkId?: string | null;
+      successUrl?: string;
+      cancelUrl?: string;
     }): Promise<KintanaFanMembershipSubscribeResult> {
       return fanRequestJson<KintanaFanMembershipSubscribeResult>(`/api/fan/v1/membership/subscribe`, {
         method: "POST",
@@ -1003,8 +1292,7 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
         body: JSON.stringify({
           planId: opts.planId,
           interval: opts.interval,
-          successUrl: opts.successUrl,
-          cancelUrl: opts.cancelUrl,
+          ...(opts.affiliateLinkId ? { affiliateLinkId: opts.affiliateLinkId } : {}),
         }),
       });
     },
@@ -1012,13 +1300,28 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
     async createFanOneoffMembershipPayment(opts: {
       planId: string;
       kind: "lifetime" | "pass";
+      affiliateLinkId?: string | null;
     }): Promise<KintanaFanOneoffMembershipPayment> {
       return fanRequestJson<KintanaFanOneoffMembershipPayment>(`/api/fan/v1/membership/oneoff`, {
         method: "POST",
         requireAuth: true,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId: opts.planId, kind: opts.kind }),
+        body: JSON.stringify({
+          planId: opts.planId,
+          kind: opts.kind,
+          ...(opts.affiliateLinkId ? { affiliateLinkId: opts.affiliateLinkId } : {}),
+        }),
       });
+    },
+
+    async resolveAffiliateRef(
+      code: string
+    ): Promise<{ linkId: string | null; refCode?: string | null }> {
+      const trimmed = code.trim();
+      if (!trimmed) return { linkId: null };
+      return fanRequestJson<{ linkId: string | null; refCode?: string | null }>(
+        `/api/fan/v1/affiliate/ref?code=${encodeURIComponent(trimmed)}`
+      );
     },
 
     async signInWithAppleNative(body: {
@@ -1056,4 +1359,18 @@ export function createKintanaClient(opts: KintanaClientOptions): KintanaClient {
       accessToken = token?.trim() || null;
     },
   };
+}
+
+/** A visitor's ad-cookie choice ("wait": hold pixels; "host": your site handles consent, pixels run). */
+export type KintanaAdConsent = "granted" | "denied" | "wait" | "host";
+
+/**
+ * Pass the visitor's ad-cookie choice to Kintana checkout widgets on the page (and any that load later).
+ * Pixels in the checkout wait for this when the widget has `data-kintana-consent="wait"`. Browser only.
+ */
+export function setKintanaConsent(choice: KintanaAdConsent): void {
+  if (typeof window === "undefined") return;
+  const w = window as unknown as { kintanaConsent?: string; Kintana?: { setConsent?: (v: string) => void } };
+  w.kintanaConsent = choice;
+  w.Kintana?.setConsent?.(choice);
 }
