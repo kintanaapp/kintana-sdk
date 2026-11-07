@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "sdk-v*"
+  # Publish whatever version main is on, without a tag (tags can't always be pushed).
+  workflow_dispatch:
 
 jobs:
   publish:
